@@ -27,19 +27,20 @@
 - [x] Phase 7: Simulation Pipeline (Integration)
 - [x] Phase 8: Results & Documentation
 
-## Status of Execution
-- Bellhop local-cluster channel model: VERIFIED
-- Hybrid TRM primary contribution: REJECTED
+## Final Publication Architecture & Parameters
+- Bellhop local-cluster model: VERIFIED
+- TRM primary contribution: REJECTED
 - Common MMSE equalizer: REJECTED / NOT ADOPTED
 - Adaptive-Q E-CAL: REJECTED
 - E-FQ fixed-Q architecture: HELD-OUT CONFIRMED
-- Final front-end: HFM synchronization only
-- Final process covariance: Q=diag([0.05,0.002]) FROZEN
-- Final Kcal: 8 FROZEN
-- Final c2: 1/50 FROZEN
+- Final front-end: HFM coarse synchronization only
+- Final Q: diag([0.05,0.002]) FROZEN
+- Kcal: 8 FROZEN
+- c2: 1/50 FROZEN
+- Pilot SNR range: -16:-10 dB FROZEN
+- Dynamic stress SNR: 15 dB FROZEN
 - Final publication variants: IAE / VB-FQ / E-FQ
-- Pilot SNR range: [Pending Scan]
-- Pilot: READY BUT NOT RUN
+- Pilot: READY ONLY IF corrected FINAL-1..10 pass
 - Paper: NOT RUN
 
 *Archival Note: Round-7 RMS-delay-spread column was input-channel RDS; not used in adoption gates.*

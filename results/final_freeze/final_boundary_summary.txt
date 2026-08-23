@@ -1,0 +1,10 @@
+P1 lower = -16 dB
+P1 upper = -12 dB
+
+P2 lower = -13 dB
+P2 upper = -10 dB
+
+P3 lower = -16 dB
+P3 upper = -12 dB
+
+common range = -16:-10 dB

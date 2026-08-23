@@ -1,12 +1,23 @@
-function main_WUWNET_Paper_Stress(mode)
+function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_override)
 % MAIN_WUWNET_PAPER_STRESS End-to-end Tracking Stress Test (Delay Variation & Fading)
-% Usage: main_WUWNET_Paper_Stress('quick')
+% Usage: [csv_file, run_meta] = main_WUWNET_Paper_Stress('quick', 15, 20)
 
     if nargin < 1
         mode = 'quick';
     end
     
     cfg = paper2_config(mode);
+    
+    if nargin >= 2 && ~isempty(snr_override)
+        snr_db = snr_override(1);
+    else
+        snr_db = cfg.stress_snr_db;
+    end
+    
+    if nargin >= 3 && ~isempty(mc_override)
+        cfg.mc_trials_stress = mc_override;
+    end
+    
     variants = {'A', 'VB-FQ', 'E-FQ'};
     csv_labels = {'IAE', 'VB-FQ', 'E-FQ'};
     num_variants = length(variants);
@@ -15,7 +26,7 @@ function main_WUWNET_Paper_Stress(mode)
     num_channels = size(cfg.channels, 1);
     
     fprintf('\n=== Starting Stress Test (%s) ===\n', upper(mode));
-    fprintf('MC Trials: %d | Channels: %d\n', num_mc, num_channels);
+    fprintf('MC Trials: %d | Channels: %d | SNR: %d dB\n', num_mc, num_channels, snr_db);
     
     out_dir = fullfile('results', mode);
     if ~exist(out_dir, 'dir')
@@ -38,6 +49,8 @@ function main_WUWNET_Paper_Stress(mode)
             results.(ch_key).(vc).mean_Reff_Rvb_fade = NaN(1, num_mc);
             results.(ch_key).(vc).Q11_fade = NaN(1, num_mc);
             results.(ch_key).(vc).Q22_fade = NaN(1, num_mc);
+            results.(ch_key).(vc).Ppred11_fade = NaN(1, num_mc);
+            results.(ch_key).(vc).Ppred22_fade = NaN(1, num_mc);
             results.(ch_key).(vc).ber = NaN(1, num_mc);
             results.(ch_key).(vc).valid = false(1, num_mc);
             results.(ch_key).(vc).raw_errors = NaN(1, num_mc);
@@ -51,13 +64,6 @@ function main_WUWNET_Paper_Stress(mode)
         ch_file = cfg.channels{ch_idx, 1};
         ch_key = sprintf('CH%d', ch_idx);
         [h_cir, ~] = select_bellhop_local_cluster(ch_file, cfg);
-        
-        % Use pilot SNR range if available, else a default
-        if ~isempty(cfg.pilot_snr_range)
-            snr_db = median(cfg.pilot_snr_range);
-        else
-            snr_db = 15;
-        end
         
         fprintf('Processing %s at %d dB...\n', cfg.channels{ch_idx, 2}, snr_db);
         
@@ -147,9 +153,13 @@ function main_WUWNET_Paper_Stress(mode)
                         results.(ch_key).(vc_key).mean_K_fade(mc) = mean(meta.K_gain(1, fade_idx));
                         results.(ch_key).(vc_key).mean_Reff_fade(mc) = mean(meta.R_eff(fade_idx));
                         
+                        if isfield(meta, 'Q_diag')
+                            results.(ch_key).(vc_key).Q11_fade(mc) = mean(meta.Q_diag(1, fade_idx));
+                            results.(ch_key).(vc_key).Q22_fade(mc) = mean(meta.Q_diag(2, fade_idx));
+                        end
                         if isfield(meta, 'P_pred_diag')
-                            results.(ch_key).(vc_key).Q11_fade(mc) = mean(meta.P_pred_diag(1, fade_idx));
-                            results.(ch_key).(vc_key).Q22_fade(mc) = mean(meta.P_pred_diag(2, fade_idx));
+                            results.(ch_key).(vc_key).Ppred11_fade(mc) = mean(meta.P_pred_diag(1, fade_idx));
+                            results.(ch_key).(vc_key).Ppred22_fade(mc) = mean(meta.P_pred_diag(2, fade_idx));
                         end
                         
                         if isfield(meta, 'R_vb')
@@ -170,7 +180,7 @@ function main_WUWNET_Paper_Stress(mode)
     timestamp = datestr(now, 'yyyymmdd_HHMMSS');
     csv_file = fullfile(out_dir, sprintf('paper2_stress_summary_%s.csv', timestamp));
     fid = fopen(csv_file, 'w');
-    fprintf(fid, 'Channel,Variant,Trials_Valid,SyncFailRate,FER_Overall,FER_Valid,BER_Valid,RMSE_Overall,RMSE_Pre,RMSE_Fade,RMSE_Post,Mean_K_Fade,Mean_Reff_Fade,Mean_Reff_Rvb_Fade,Mean_Q11_Fade\n');
+    fprintf(fid, 'Channel,Variant,Trials_Valid,SyncFailRate,FER_Overall,FER_Valid,BER_Valid,RMSE_Overall,RMSE_Pre,RMSE_Fade,RMSE_Post,Mean_K_Fade,Mean_Reff_Fade,Mean_Reff_Rvb_Fade,Median_Q11_Fade,Median_Q22_Fade,Median_Ppred11_Fade,Median_Ppred22_Fade\n');
     
     for ch_idx = 1:num_channels
         ch_key = sprintf('CH%d', ch_idx);
@@ -190,10 +200,13 @@ function main_WUWNET_Paper_Stress(mode)
             m_reff = median(results.(ch_key).(vc_key).mean_Reff_fade(valid_mask), 'omitnan');
             m_rr = median(results.(ch_key).(vc_key).mean_Reff_Rvb_fade(valid_mask), 'omitnan');
             m_q11 = median(results.(ch_key).(vc_key).Q11_fade(valid_mask), 'omitnan');
+            m_q22 = median(results.(ch_key).(vc_key).Q22_fade(valid_mask), 'omitnan');
+            m_p11 = median(results.(ch_key).(vc_key).Ppred11_fade(valid_mask), 'omitnan');
+            m_p22 = median(results.(ch_key).(vc_key).Ppred22_fade(valid_mask), 'omitnan');
             
-            fprintf(fid, '%s,%s,%d,%.4f,%.4f,%.4f,%.6f,%.4f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f\n', ...
+            fprintf(fid, '%s,%s,%d,%.4f,%.4f,%.4f,%.6f,%.4f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
                 cfg.channels{ch_idx, 2}, label, stats.Trials_Valid, stats.SyncFailRate, ...
-                stats.FER_Overall, stats.FER_Valid, stats.BER_Valid, m_rmse, m_pre, m_fade, m_post, m_k, m_reff, m_rr, m_q11);
+                stats.FER_Overall, stats.FER_Valid, stats.BER_Valid, m_rmse, m_pre, m_fade, m_post, m_k, m_reff, m_rr, m_q11, m_q22, m_p11, m_p22);
         end
     end
     fclose(fid);
@@ -201,4 +214,15 @@ function main_WUWNET_Paper_Stress(mode)
     save_file = fullfile(out_dir, sprintf('paper2_stress_%s_%s.mat', mode, timestamp));
     save(save_file, 'results', 'cfg', 'variants', 'csv_labels', 'mode');
     fprintf('Stress results saved to:\n  %s\n  %s\n', save_file, csv_file);
+    
+    run_meta.variants_internal = variants;
+    run_meta.variant_labels = csv_labels;
+    run_meta.stress_snr_db = snr_db;
+    run_meta.num_mc = cfg.mc_trials_stress;
+    run_meta.frontend_use_trm = cfg.frontend.use_trm;
+    run_meta.equalizer_enabled = cfg.equalizer.enabled;
+    run_meta.final_tracker_variant = cfg.final_tracker_variant;
+    run_meta.c2 = cfg.c2;
+    run_meta.Q = cfg.final_Q;
+    run_meta.has_all_profiles = (num_channels == 3);
 end

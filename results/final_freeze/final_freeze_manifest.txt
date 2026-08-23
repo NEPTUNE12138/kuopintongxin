@@ -1,4 +1,5 @@
-commit SHA = 644d5a087c66b06fa7f4f51e51e635d33fd3a846
+freeze_basis_sha = 21eacc7e9393c889b40dd3cbba6edd7eb478cff4
+generated_from_worktree = Round-8.1
 final tracker = E-FQ
 TRM = disabled
 equalizer = disabled
@@ -10,5 +11,6 @@ channel model = bellhop_local_cluster
 cluster gap = 0.05 s
 publication variants = IAE, VB-FQ, E-FQ
 pilot SNR range = -16:-10
+stress SNR = 15 dB
 pilot MC = 200
 paper MC = 3000

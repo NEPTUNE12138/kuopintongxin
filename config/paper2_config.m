@@ -99,19 +99,23 @@ function cfg = paper2_config(mode)
     
     %% Simulation & Monte Carlo Modes
     cfg.master_seed = 20260823;
-    cfg.snr_range = -14:1:0;
-    cfg.pilot_snr_range = []; % To be populated by scan
+    cfg.quick_snr_range = -14:1:0;
+    cfg.pilot_snr_range = -16:1:-10;
+    cfg.stress_snr_db = 15;
     
     switch mode
         case 'quick'
+            cfg.snr_range = cfg.quick_snr_range;
             cfg.mc_trials_ber = 20;
             cfg.mc_trials_stress = 20;
             cfg.mc_trials_sens = 20;
         case 'pilot'
+            cfg.snr_range = cfg.pilot_snr_range;
             cfg.mc_trials_ber = 200;
             cfg.mc_trials_stress = 200;
             cfg.mc_trials_sens = 100;
         case 'paper'
+            cfg.snr_range = cfg.pilot_snr_range;
             cfg.mc_trials_ber = 3000;
             cfg.mc_trials_stress = 3000;
             cfg.mc_trials_sens = 300;
