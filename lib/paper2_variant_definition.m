@@ -54,14 +54,14 @@ function variant_info = paper2_variant_definition(var_char)
             variant_info.uses_vb = true;
         case 'E-FQ'
             variant_info.name = 'E-FQ: Proposed Fixed-Q Variant';
-            variant_info.uses_trm = true;
-            variant_info.uses_hybrid = true;
+            variant_info.uses_trm = false;
+            variant_info.uses_hybrid = false;
             variant_info.uses_reliability = true;
             variant_info.uses_vb = true;
         case 'VB-FQ'
             variant_info.name = 'VB-FQ: Ablation Fixed-Q Variant';
-            variant_info.uses_trm = true;
-            variant_info.uses_hybrid = true;
+            variant_info.uses_trm = false;
+            variant_info.uses_hybrid = false;
             variant_info.uses_reliability = false;
             variant_info.uses_vb = true;
         otherwise

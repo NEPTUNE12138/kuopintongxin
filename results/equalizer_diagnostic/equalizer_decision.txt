@@ -1,0 +1,18 @@
+Gate EQ-1 (Validity >= 0.95): PASS
+  EQ-2 FAIL: P2 SNR=0 ISI reduction = -31.27% < 20%
+  EQ-2 FAIL: P2 SNR=15 ISI reduction = -3.68% < 20%
+  EQ-2 FAIL: P1 SNR=0 EQ ISI=0.4943 > 1.10*NoEQ=0.3669
+  EQ-2 FAIL: P1 SNR=15 EQ ISI=0.4210 > 1.10*NoEQ=0.3669
+  EQ-2 FAIL: P3 SNR=0 EQ ISI=0.2837 > 1.10*NoEQ=0.0054
+  EQ-2 FAIL: P3 SNR=15 EQ ISI=0.0409 > 1.10*NoEQ=0.0054
+Gate EQ-2 (Physical ISI suppression): FAIL
+  EQ-3 FAIL: P1_SNR15_S3_Warp_Fade E-FQ EQ/NoEQ = 1.2486 > 1.10
+  EQ-3 FAIL: P2_SNR0_S3_Warp_Fade E-FQ EQ/NoEQ = 2.2409 > 1.10
+  EQ-3 FAIL: P3_SNR15_S3_Warp_Fade E-FQ EQ/NoEQ = 2.1832 > 1.10
+  EQ-3 FAIL: median S3 ratio = 1.0949 > 1.00
+Gate EQ-3 (Tracker Safety): FAIL
+Gate EQ-4 (Shared Frontend Fairness): PASS (verified by gate test)
+Gate EQ-5: PRACTICAL_CHANNEL_ESTIMATION_LIMITED
+
+COMMON_MMSE_EQUALIZER_REJECTED
+PILOT NOT RUN — waiting for scientific review.

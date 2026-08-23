@@ -5,9 +5,9 @@
 | Modulation is DBPSK/DSSS | `generate_paper2_tx_signal.m`, differential decoding | `test_signal_model.m` | N/A | VERIFIED |
 | State model is DLL delay/drift | `hvb_akf_delay_tracker.m` | `test_hvb_tracker.m` | N/A | VERIFIED |
 | Early–Late measurement | `run_paper2_receiver_variant.m` (delta spacing) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | VERIFIED |
-| Hybrid TRM (CFAR+ACF) | `extract_cir_hybrid.m` | `generate_paper_trm_ablation.m` | `Fig_TRM_Ablation.png` | VERIFIED |
-| OS-CFAR | `os_cfar_1d.m` | `test_hybrid_cir_extraction.m` | N/A | VERIFIED |
-| HFM ACF floor | `extract_cir_hybrid.m` | `generate_paper_trm_ablation.m` | `Fig_TRM_Ablation.png` | VERIFIED |
+| Hybrid TRM (CFAR+ACF) | `extract_cir_hybrid.m` | `generate_paper_trm_ablation.m` | `Fig_TRM_Ablation.png` | IMPLEMENTED — EFFICACY REJECTED |
+| OS-CFAR | `os_cfar_1d.m` | `test_hybrid_cir_extraction.m` | N/A | UNIT SEMANTICS VERIFIED — NOT A PRIMARY CONTRIBUTION |
+| HFM ACF floor | `extract_cir_hybrid.m` | `generate_paper_trm_ablation.m` | `Fig_TRM_Ablation.png` | IMPLEMENTED — EFFICACY REJECTED |
 | Reliability metric ($m_k$) | `run_paper2_receiver_variant.m` | `main_WUWNET_Paper_Stress.m` | `stress_test_results.mat` | VERIFIED |
 | VB coordinate-ascent | `hvb_akf_delay_tracker.m` (inner loop) | `test_hvb_tracker.m` | N/A | VERIFIED |
 | Fixed c2 heteroscedastic penalty | `hvb_akf_delay_tracker.m` | `plot_sensitivity_c2.m` | `Fig_Sensitivity_c2.png` | VERIFIED |
@@ -30,13 +30,13 @@
 ## Status of Execution
 - Round-4 Algorithm Freeze: HALTED
 - Full Quick Pipeline: FAILED / NOT COMPLETE
-- Hybrid TRM primary contribution: REJECTED BY CORRECTED 30-MC CFAR FALSIFICATION
-- E-CAL adaptive-Q: REJECTED AS FINAL
-- Fixed-Q calibrated HVB: CANDIDATE ONLY
-- Final tracker: UNRESOLVED
-- c2 final: NOT FROZEN
+- E-FQ held-out tracker architecture: PASS
+- Common MMSE equalizer: REJECTED / NOT REQUIRED
+- Final architecture: no-EQ E-FQ candidate
+- TRM primary contribution: REJECTED
+- Final tracker parameters: awaiting c2 freeze
 - Bellhop local-cluster model: VERIFIED
-- Pilot: BLOCKED
+- Pilot: NOT RUN
 - Paper: NOT RUN
 
 ## Unimplemented / Rejected Claims

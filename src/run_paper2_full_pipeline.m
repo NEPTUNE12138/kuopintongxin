@@ -44,17 +44,23 @@ function run_paper2_full_pipeline(mode)
         test_frontend_trm_override;
         test_receiver_telemetry_histories;
         test_phase_mask_reset;
+        test_equalizer_channel_estimator_noiseless;
+        test_equalizer_mmse_inverse;
+        test_equalizer_full_convolution;
+        test_equalizer_shared_frontend;
+        test_equalizer_no_oracle_leakage;
+        test_candidate_no_trm_semantics;
         fprintf('\nALL GATE TESTS PASSED!\n');
     catch ME
         fprintf('\n[!] GATE TEST FAILED: %s\n', ME.message);
         rethrow(ME);
     end
     
-    % 2. Fixed-Q Held-Out Confirmatory Experiment (Round 6)
-    fprintf('\n--- Fixed-Q Held-Out Confirmation (Round 6) ---\n');
-    confirm_fixedq_tracker_heldout(mode);
+    % 2. Round-7: MMSE Equalizer Diagnostic
+    fprintf('\n--- MMSE Equalizer Diagnostic (Round 7) ---\n');
+    diagnose_common_mmse_equalizer(mode);
     
-    % Pipeline terminates here — Pilot/Paper blocked while final tracker unresolved
+    % Pipeline terminates here
     fprintf('\nPILOT NOT RUN\n');
     fprintf('PAPER NOT RUN\n');
 end

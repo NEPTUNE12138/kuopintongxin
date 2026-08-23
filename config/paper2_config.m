@@ -74,6 +74,14 @@ function cfg = paper2_config(mode)
     % Early-Late Tracking window size
     cfg.W_size = 5; 
     
+    % Equalizer (common front-end, disabled by default)
+    cfg.equalizer.enabled = false;
+    cfg.equalizer.channel_len = cfg.symbol_samples;
+    cfg.equalizer.eq_len = cfg.symbol_samples;
+    cfg.equalizer.decision_delay = cfg.equalizer.channel_len - 1;
+    cfg.equalizer.noise_guard_fraction = 0.5;
+    cfg.equalizer.method = 'preamble_rls_mmse';
+    
     % Frozen state initialization
     cfg.final_tracker_variant = 'UNRESOLVED';
     cfg.c2_frozen = false;
