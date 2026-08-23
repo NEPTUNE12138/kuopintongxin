@@ -1,53 +1,41 @@
 % generate_paper_trm_ablation.m
 % Generates the TRM Hybrid CIR extraction ablation figure using genuine data.
-clc; clear; close all;
 addpath('../lib');
 addpath('../config');
 
 cfg = paper2_config('paper');
 ch_file = cfg.channels{1, 1}; % First channel
-load(ch_file);
-
-f_names = fieldnames();
-if exist('h', 'var'), h_chan = h; else, f_names=fieldnames(load(ch_file)); ch_data=load(ch_file); h_chan = ch_data.(f_names{1}); end
-h_chan = h_chan(:).';
+[h_chan, ~] = load_bellhop_cir(ch_file, cfg.fs);
 
 % 1. Transmitted HFM Preamble
-fs = cfg.fs;
-T_pre = 0.05;
-t_pre = 0:1/fs:T_pre-1/fs;
-f0 = cfg.preamble_band(1);
-f1 = cfg.preamble_band(2);
-K = (f1 - f0) / T_pre;
-preamble = exp(1j * 2 * pi * (f0 * t_pre + 0.5 * K * t_pre.^2));
+preamble = generate_hfm_preamble(cfg);
 
 % 2. Channel Filtering
 rx_preamble_clean = filter(h_chan, 1, preamble);
 
 % 3. Controlled Noise (e.g. SNR = 0 dB for clear illustration)
 snr_db = 0;
-sig_pwr = var(rx_preamble_clean);
+sig_pwr = norm(rx_preamble_clean)^2 / length(rx_preamble_clean);
 noise = sqrt(sig_pwr / (2 * 10^(snr_db/10))) * (randn(size(rx_preamble_clean)) + 1j*randn(size(rx_preamble_clean)));
 rx_preamble = rx_preamble_clean + noise;
 
 % 4. Matched Filtering
-corr_out = xcorr(rx_preamble, preamble);
-corr_out = corr_out(length(rx_preamble):end); % causal part
-[~, peak_idx] = max(abs(corr_out));
+[peak_idx, ~, ~, mf, ~] = coarse_sync_from_preamble(rx_preamble, preamble, cfg);
 
 win_start = max(1, peak_idx - 50);
-win_end   = min(length(corr_out), peak_idx + 200);
-g_win = corr_out(win_start:win_end);
+win_end   = min(length(mf), peak_idx + 200);
+g_win = mf(win_start:win_end);
 
 % 5. Hybrid Extraction
 [h_ext, gamma_os, gamma_acf, gamma_hybrid, mask, meta] = extract_cir_hybrid(g_win, preamble, cfg);
 
 % 6. Equivalent CIR after TRM
-q_filter = conj(fliplr(h_ext));
-equiv_cir = conv(h_ext, q_filter);
+[q_filter, ~] = build_tr_filter(h_ext);
+equiv_cir = filter(q_filter, 1, h_ext);
 
 %% Plotting
 fig = figure('Position', [100, 100, 800, 600], 'Color', 'w');
+fs = cfg.fs;
 t_axis = (0:length(g_win)-1) / fs * 1000; % ms
 
 subplot(3, 1, 1);
@@ -75,6 +63,6 @@ title('Equivalent Channel Impulse Response (After Hybrid TRM)');
 xlabel('Delay Time (ms)'); ylabel('Magnitude');
 grid on;
 
-if ~exist(cfg.results_dir, 'dir'), mkdir(cfg.results_dir); end
-exportgraphics(fig, fullfile(cfg.results_dir, 'Fig_TRM_Ablation.png'), 'Resolution', 300);
-fprintf('TRM Ablation plot saved to %s\n', cfg.results_dir);
+if ~exist('results_plots', 'dir'), mkdir('results_plots'); end
+exportgraphics(fig, fullfile('results_plots', 'Fig_TRM_Ablation.png'), 'Resolution', 300);
+fprintf('TRM Ablation plot saved to results_plots\n');

@@ -1,16 +1,15 @@
-% plot_all_3_channels_ber.m
-% Plot BER for variants A, B, C, D, E from WUWNET_Paper validation
-clc; clear; close all;
-addpath('../config');
-
-cfg = paper2_config('paper');
-res_file = fullfile(cfg.results_dir, 'raw_results.mat');
-
-if ~exist(res_file, 'file')
-    error('Results file not found. Run main_WUWNET_Paper_Validation first.');
+function plot_all_3_channels_ber(mode)
+    if nargin < 1, mode = 'quick'; end
+    cfg = paper2_config(mode);
+    res_dir = fullfile('results', mode);
+files = dir(fullfile(res_dir, 'paper2_ber_validation_*.mat'));
+if isempty(files)
+    error('Results file not found. Run run_paper2_full_pipeline(''paper'') first.');
 end
+[~, idx] = sort([files.datenum], 'descend');
+res_file = fullfile(res_dir, files(idx(1)).name);
 
-load(res_file); % Loads 'res', 'cfg', 'variants'
+load(res_file, 'ber_results', 'cfg', 'variants'); 
 
 channels = cfg.channels;
 num_channels = size(channels, 1);
@@ -34,13 +33,15 @@ colors = {
     [0.850, 0.1, 0.1]      % E
 };
 markers = {'-s', '-d', '-o', '-^', '-p'};
-legend_strs = {
-    'A: No TRM + IAE-AKF', ...
-    'B: OS-CFAR TRM + IAE-AKF', ...
-    'C: Hybrid TRM + IAE-AKF', ...
-    'D: Hybrid TRM + C-Gated IAE', ...
-    'E: Proposed Hybrid TRM + HVB-AKF'
-};
+
+legend_strs = cell(1, length(variants));
+for v = 1:length(variants)
+    def = paper2_variant_definition(variants{v});
+    legend_strs{v} = def.name;
+end
+
+out_dir = 'results_plots';
+if ~exist(out_dir, 'dir'), mkdir(out_dir); end
 
 for i = 1:num_channels
     ch_title = channels{i, 2};
@@ -49,7 +50,8 @@ for i = 1:num_channels
     hold on;
     for v = 1:length(variants)
         var_name = variants{v};
-        ber = res.(var_name).ber(i, :);
+        % ber_results is [ch, snr, var, mc]
+        ber = squeeze(mean(ber_results(i, :, v, :), 4, 'omitnan'));
         
         lw = line_width_thin;
         ms = 8;
@@ -74,12 +76,11 @@ for i = 1:num_channels
     set(lgd, 'FontName', font_name, 'FontSize', font_size_legend, 'EdgeColor', 'none', 'Color', 'none');
     ylim([1e-4, 1.0]); xlim([min(SNR_range), max(SNR_range)]);
     
-    % Note: Removed all manual routing and floor elimination annotations as requested.
-    
     out_name = sprintf('Fig_BER_Paper2_Ch%d.png', i);
-    out_path = fullfile(cfg.results_dir, out_name);
+    out_path = fullfile(out_dir, out_name);
     
     exportgraphics(fig, out_path, 'Resolution', 300);
     close(fig);
     fprintf('Saved %s\n', out_name);
+end
 end

@@ -1,139 +1,116 @@
-% main_WUWNET_Paper_Validation.m
-% WUWNET Paper 2 Main BER Validation Script
-clear; clc;
-addpath('../lib');
-addpath('../config');
+function main_WUWNET_Paper_Validation(mode)
+% MAIN_WUWNET_PAPER_VALIDATION End-to-end BER Validation over SNR
+% Usage: main_WUWNET_Paper_Validation('quick')
 
-% 1. Load config
-cfg = paper2_config('paper'); % Use 'paper' mode for final results, or 'quick' for testing
-
-variants = {'A', 'B', 'C', 'D', 'E'};
-num_variants = length(variants);
-snr_range = cfg.snr_range;
-num_snr = length(snr_range);
-num_channels = size(cfg.channels, 1);
-
-%% Initialize Results Storage
-res = struct();
-for v = 1:num_variants
-    var_name = variants{v};
-    res.(var_name).total_errors = zeros(num_channels, num_snr);
-    res.(var_name).total_bits = zeros(num_channels, num_snr);
-    res.(var_name).sync_fails = zeros(num_channels, num_snr);
-    res.(var_name).valid_trials = zeros(num_channels, num_snr);
-    res.(var_name).runtime = zeros(num_channels, num_snr);
-end
-
-%% Simulation Loop
-for ch_idx = 1:num_channels
-    ch_file = cfg.channels{ch_idx, 1};
-    ch_name = cfg.channels{ch_idx, 2};
-    fprintf('\n--- Processing Channel: %s ---\n', ch_name);
-    
-    % Load Bellhop CIR
-    if ~exist(ch_file, 'file')
-        error('Bellhop channel file not found: %s', ch_file);
+    if nargin < 1
+        mode = 'quick';
     end
-    ch_data = load(ch_file);
-    % Assuming channel data has a field 'h' or similar. 
-    % For this script, we'll extract the first vector we find.
-    f_names = fieldnames(ch_data);
-    for fi = 1:length(f_names)
-        if isnumeric(ch_data.(f_names{fi})) && length(ch_data.(f_names{fi})) > 10
-            h_chan = ch_data.(f_names{fi});
-            break;
-        end
-    end
-    h_chan = h_chan(:).'; % Row vector
     
-    for snr_idx = 1:num_snr
-        snr_db = snr_range(snr_idx);
-        fprintf('  SNR = %d dB ', snr_db);
+    cfg = paper2_config(mode);
+    variants = {'A', 'B', 'C', 'D', 'E'};
+    num_variants = length(variants);
+    
+    num_snr = length(cfg.snr_range);
+    num_channels = size(cfg.channels, 1);
+    num_mc = cfg.mc_trials_ber;
+    
+    % Dimensions: [Channel, SNR, Variant, MC]
+    ber_results = NaN(num_channels, num_snr, num_variants, num_mc);
+    
+    fprintf('\n=== Starting BER Validation (%s) ===\n', upper(mode));
+    fprintf('Channels: %d | SNRs: %d | MC Trials: %d\n', num_channels, num_snr, num_mc);
+    
+    out_dir = fullfile('results', mode);
+    if ~exist(out_dir, 'dir')
+        mkdir(out_dir);
+    end
+    
+    total_iters = num_channels * num_snr * num_mc;
+    iter_count = 0;
+    
+    for ch_idx = 1:num_channels
+        ch_file = cfg.channels{ch_idx, 1};
+        [h_cir, ~] = load_bellhop_cir(ch_file, cfg.fs);
         
-        for trial = 1:cfg.mc_trials
-            if mod(trial, 100) == 0, fprintf('.'); end
+        fprintf('Processing Channel %d/%d: %s\n', ch_idx, num_channels, cfg.channels{ch_idx, 2});
+        
+        for snr_idx = 1:num_snr
+            snr_db = cfg.snr_range(snr_idx);
             
-            % Generate TX signal
-            [sig_bb_tx, data_bits, preamble, mseq, mseq_ref] = generate_paper2_tx_signal(cfg);
-            
-            % Channel Convolution
-            sig_rx_clean = filter(h_chan, 1, sig_bb_tx);
-            
-            % Add Noise (Same realization for all variants)
-            sig_pwr = var(sig_rx_clean);
-            noise_pwr = sig_pwr / (10^(snr_db/10));
-            noise = sqrt(noise_pwr/2) * (randn(size(sig_rx_clean)) + 1j*randn(size(sig_rx_clean)));
-            sig_rx_noisy = sig_rx_clean + noise;
-            
-            % Evaluate Variants
-            for v = 1:num_variants
-                var_name = variants{v};
+            for mc = 1:num_mc
+                iter_count = iter_count + 1;
+                if mod(iter_count, 10) == 0 || total_iters < 100
+                    fprintf('  Prog: %d/%d (%.1f%%) [SNR %d dB, MC %d]\n', iter_count, total_iters, 100*iter_count/total_iters, snr_db, mc);
+                end
                 
-                try
-                    [decoded_bits, track_err, runtime, meta] = run_paper2_receiver_variant(...
-                        sig_rx_noisy, preamble, mseq_ref, cfg, var_name);
-                        
-                    res.(var_name).runtime(ch_idx, snr_idx) = res.(var_name).runtime(ch_idx, snr_idx) + runtime;
+                % 1. Generate Signal
+                [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg);
+                
+                % 2. Apply Channel & Noise
+                rx_clean = filter(h_cir, 1, tx_pb);
+                
+                rx_power = norm(rx_clean)^2 / length(rx_clean);
+                noise_power = rx_power / (10^(snr_db / 10));
+                noise = sqrt(noise_power/2) * (randn(size(rx_clean)) + 1j * randn(size(rx_clean)));
+                
+                rx_noisy = rx_clean + noise;
+                
+                % 3. Common Coarse Sync
+                [peak_idx, p_start, pay_start, mf, ~] = coarse_sync_from_preamble(rx_noisy, preamble, cfg);
+                sync_meta.peak_idx = peak_idx;
+                sync_meta.preamble_start = p_start;
+                sync_meta.payload_start = pay_start;
+                sync_meta.mf = mf;
+                
+                % 4. Evaluate Variants (Identical conditions)
+                for v = 1:num_variants
+                    var_char = variants{v};
                     
-                    if length(decoded_bits) == length(data_bits)
-                        errors = sum(decoded_bits ~= data_bits);
-                        res.(var_name).total_errors(ch_idx, snr_idx) = res.(var_name).total_errors(ch_idx, snr_idx) + errors;
-                        res.(var_name).total_bits(ch_idx, snr_idx) = res.(var_name).total_bits(ch_idx, snr_idx) + length(data_bits);
-                        res.(var_name).valid_trials(ch_idx, snr_idx) = res.(var_name).valid_trials(ch_idx, snr_idx) + 1;
-                    else
-                        res.(var_name).sync_fails(ch_idx, snr_idx) = res.(var_name).sync_fails(ch_idx, snr_idx) + 1;
+                    try
+                        [decoded_bits, ~, meta] = run_paper2_receiver_variant(rx_noisy, preamble, mseq_os, sync_meta, cfg, var_char);
+                        
+                        if strcmp(meta.status, 'SYNC_FAIL')
+                            ber_results(ch_idx, snr_idx, v, mc) = NaN; % Sync fail tracked as NaN
+                        elseif isempty(decoded_bits)
+                            ber_results(ch_idx, snr_idx, v, mc) = NaN;
+                        else
+                            errors = sum(decoded_bits ~= data_bits(1:length(decoded_bits)));
+                            ber = errors / max(1, length(decoded_bits));
+                            ber_results(ch_idx, snr_idx, v, mc) = ber;
+                        end
+                    catch ME
+                        if strcmp(ME.identifier, 'Paper2:SyncFail')
+                            ber_results(ch_idx, snr_idx, v, mc) = NaN;
+                        else
+                            rethrow(ME); % Unexpected exceptions MUST be rethrown
+                        end
                     end
-                catch
-                    res.(var_name).sync_fails(ch_idx, snr_idx) = res.(var_name).sync_fails(ch_idx, snr_idx) + 1;
                 end
             end
         end
-        fprintf(' Done.\n');
     end
-end
-
-%% Compute BER and Wilson CI
-z = 1.96; % 95% CI
-for v = 1:num_variants
-    var_name = variants{v};
-    n = res.(var_name).total_bits;
-    e = res.(var_name).total_errors;
     
-    p = e ./ max(1, n);
-    res.(var_name).ber = p;
-    
-    % Wilson Score Interval
-    denom = 1 + z^2 ./ max(1, n);
-    center = (p + z^2 ./ (2 * max(1, n))) ./ denom;
-    half_width = (z .* sqrt(p .* (1 - p) ./ max(1, n) + z^2 ./ (4 * max(1, n).^2))) ./ denom;
-    
-    res.(var_name).ci_lower = max(0, center - half_width);
-    res.(var_name).ci_upper = min(1, center + half_width);
-end
-
-%% Save Results
-if ~exist(cfg.results_dir, 'dir')
-    mkdir(cfg.results_dir);
-end
-
-save(fullfile(cfg.results_dir, 'raw_results.mat'), 'res', 'cfg', 'variants');
-
-% Export to CSV
-csv_file = fopen(fullfile(cfg.results_dir, 'ber_results.csv'), 'w');
-fprintf(csv_file, 'Channel,SNR_dB,Variant,BER,CI_Lower,CI_Upper,Sync_Fails\n');
-for ch_idx = 1:num_channels
-    for snr_idx = 1:num_snr
+    % Metrics computation
+    % For each variant, channel, SNR: calculate mean BER, FER, valid trials
+    fprintf('\n--- BER Validation Summary ---\n');
+    for ch_idx = 1:num_channels
+        fprintf('Channel %d:\n', ch_idx);
         for v = 1:num_variants
-            var_name = variants{v};
-            fprintf(csv_file, '%s,%d,%s,%e,%e,%e,%d\n', ...
-                cfg.channels{ch_idx, 2}, snr_range(snr_idx), var_name, ...
-                res.(var_name).ber(ch_idx, snr_idx), ...
-                res.(var_name).ci_lower(ch_idx, snr_idx), ...
-                res.(var_name).ci_upper(ch_idx, snr_idx), ...
-                res.(var_name).sync_fails(ch_idx, snr_idx));
+            total_trials = num_mc * num_snr;
+            all_bers = squeeze(ber_results(ch_idx, :, v, :));
+            valid_mask = ~isnan(all_bers);
+            num_valid = sum(valid_mask(:));
+            sync_fail_rate = 1 - (num_valid / total_trials);
+            
+            % Compute aggregate BER over all SNRs just for console print
+            % Actually, it's better to print per SNR, but for brevity we print sync fail.
+            fprintf('  Variant %s: Valid Trials %d/%d (Fail Rate %.2f%%)\n', ...
+                variants{v}, num_valid, total_trials, sync_fail_rate * 100);
         end
     end
+    
+    timestamp = datestr(now, 'yyyymmdd_HHMMSS');
+    save_file = fullfile(out_dir, sprintf('paper2_ber_validation_%s.mat', timestamp));
+    save(save_file, 'ber_results', 'cfg', 'variants', 'mode');
+    fprintf('Validation results saved to: %s\n', save_file);
 end
-fclose(csv_file);
-
-fprintf('\nValidation complete. Results saved to %s\n', cfg.results_dir);

@@ -113,7 +113,8 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
             L_pwr = abs(sum(seg_L .* conj(mseq_ref)))^2;
             
             D_k = (L_pwr - E_pwr) / (E_pwr + L_pwr + 1e-9);
-            z_k = D_k * delta;
+            z_res = D_k * delta;
+            z_abs = x_pre(1) + z_res;
             
             % Normalized Reliability
             corr_p = sum(seg_P .* conj(mseq_ref));
@@ -127,14 +128,14 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
             
             % Save to meta
             meta.u_prompt(k) = u_k;
-            meta.delay_measurement_z(k) = z_k;
+            meta.delay_measurement_z(k) = z_abs;
             meta.rho(k) = rho_k;
             meta.m_reliability(k) = m_k;
             
             % Filter Update
             if var_def.uses_vb
                 [x_k, P_k, alpha_k, beta_k, Q_k, tracker_meta] = hvb_akf_delay_tracker(...
-                    z_k, u_k, u_prev, m_k, x_k, P_k, alpha_k, beta_k, Q_k, cfg);
+                    z_abs, u_k, u_prev, m_k, x_k, P_k, alpha_k, beta_k, Q_k, cfg);
                 
                 meta.R_vb(k) = tracker_meta.R_vb;
                 meta.R_eff(k) = tracker_meta.R_eff;
@@ -143,7 +144,7 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                 meta.Q_diag(:, k) = tracker_meta.Q_diag;
             else
                 H_mat = [1 0];
-                innov_buffer(innov_idx) = z_k;
+                innov_buffer(innov_idx) = z_res;
                 innov_idx = mod(innov_idx, W_size) + 1;
                 
                 if k > W_size
@@ -167,7 +168,7 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                 P_pre = F_mat * P_k * F_mat' + Q_k;
                 K_gain = P_pre * H_mat' / (H_mat * P_pre * H_mat' + R_eff);
                 
-                x_k = x_pre + K_gain * (z_k - H_mat * x_pre);
+                x_k = x_pre + K_gain * (z_abs - H_mat * x_pre);
                 P_k = (eye(2) - K_gain * H_mat) * P_pre;
                 
                 meta.R_vb(k) = R_iae;

@@ -1,17 +1,19 @@
-% extract_paper_metrics.m
-% Extracts final metrics from raw results for the paper
-clc; clear;
-addpath('../config');
-cfg = paper2_config('paper');
+function extract_paper_metrics(mode)
+    if nargin < 1, mode = 'quick'; end
+    cfg = paper2_config(mode);
 
-res_file = fullfile(cfg.results_dir, 'raw_results.mat');
-if ~exist(res_file, 'file')
+    % We need to find the latest Validation result in results/mode/
+    res_dir = fullfile('results', mode);
+files = dir(fullfile(res_dir, 'paper2_ber_validation_*.mat'));
+if isempty(files)
     warning('No raw results found to extract metrics from.');
     return;
 end
-load(res_file);
+[~, idx] = sort([files.datenum], 'descend');
+res_file = fullfile(res_dir, files(idx(1)).name);
+load(res_file, 'ber_results', 'variants');
 
-out_dir = '../generated';
+out_dir = 'results_plots';
 if ~exist(out_dir, 'dir'), mkdir(out_dir); end
 
 fid = fopen(fullfile(out_dir, 'paper_metrics.tex'), 'w');
@@ -19,13 +21,15 @@ csv_fid = fopen(fullfile(out_dir, 'paper_metrics.csv'), 'w');
 fprintf(fid, '%% Auto-generated metrics for WUWNET Paper 2\n');
 fprintf(csv_fid, 'Metric,Value\n');
 
+vE_idx = find(strcmp(variants, 'E'));
+
 % 1. Find 1e-3 BER crossings for variant E
 ber_target = 1e-3;
 for i = 1:size(cfg.channels, 1)
     ch_name = cfg.channels{i, 2};
     clean_name = strrep(ch_name, ' ', ''); clean_name = strrep(clean_name, '(', ''); clean_name = strrep(clean_name, ')', '');
     
-    ber_E = res.E.ber(i, :);
+    ber_E = squeeze(mean(ber_results(i, :, vE_idx, :), 4, 'omitnan'));
     
     % Simple interpolation for crossing
     idx_below = find(ber_E <= ber_target, 1, 'first');
@@ -49,3 +53,4 @@ end
 fclose(fid);
 fclose(csv_fid);
 fprintf('Exported paper_metrics.tex and .csv\n');
+end

@@ -22,9 +22,9 @@ function test_delay_tracking_ground_truth()
     
     % The true delay in samples:
     % t_src maps to t, so receiver at t gets source at t_src.
-    % delay(t) = t_src - t; 
-    % in samples: epsilon_true_samples = (t_src - t) * fs;
-    epsilon_true_samples = (t_src - t) * cfg.fs;
+    % delay(t) = t - t_src; 
+    % in samples: epsilon_true_samples = (t - t_src) * fs;
+    epsilon_true_samples = (t - t_src) * cfg.fs;
     
     [peak_idx, p_start, pay_start, mf, ~] = coarse_sync_from_preamble(rx_pb, preamble, cfg);
     
@@ -54,12 +54,23 @@ function test_delay_tracking_ground_truth()
     err_A = eps_est_rel_A - eps_true_rel;
     rmse_A = sqrt(mean(err_A.^2));
     
+    % Zero estimator RMSE
+    rmse_zero = sqrt(mean(eps_true_rel.^2));
+    
+    % Correlation
+    corr_E_mat = corrcoef(eps_est_rel_E, eps_true_rel);
+    corr_E = corr_E_mat(1,2);
+    
     fprintf('\n--- Delay Tracking Ground Truth ---\n');
     fprintf('True Delay Variation: ~%.2f samples\n', max(eps_true_rel)-min(eps_true_rel));
-    fprintf('Variant E RMSE: %.4f samples\n', rmse_E);
+    fprintf('Zero-Estimator RMSE: %.4f samples\n', rmse_zero);
     fprintf('Variant A RMSE: %.4f samples\n', rmse_A);
+    fprintf('Variant E RMSE: %.4f samples\n', rmse_E);
+    fprintf('Variant E Correlation with True: %.4f\n', corr_E);
     
-    assert(rmse_E < 10, 'Proposed variant E tracking RMSE is too large (> 10 samples) under simple warp.');
+    assert(corr_E > 0, 'Tracking correlation with true delay must be positive.');
+    assert(rmse_E < rmse_zero, 'Variant E tracking RMSE must be better than doing nothing (zero-estimator).');
+    assert(rmse_E <= rmse_A * 1.5, 'Variant E tracking should not be significantly worse than Variant A on simple warp.');
     
     disp('test_delay_tracking_ground_truth passed.');
 end
