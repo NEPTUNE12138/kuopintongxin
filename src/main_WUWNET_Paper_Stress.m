@@ -44,11 +44,29 @@ function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_
             results.(ch_key).(vc).rmse_fade = NaN(1, num_mc);
             results.(ch_key).(vc).rmse_post = NaN(1, num_mc);
             results.(ch_key).(vc).rmse_overall = NaN(1, num_mc);
-            results.(ch_key).(vc).mean_K_fade = NaN(1, num_mc);
-            results.(ch_key).(vc).mean_Reff_fade = NaN(1, num_mc);
+            
+            results.(ch_key).(vc).m_pre = NaN(1, num_mc);
+            results.(ch_key).(vc).m_fade = NaN(1, num_mc);
+            results.(ch_key).(vc).m_post = NaN(1, num_mc);
+            
+            results.(ch_key).(vc).mean_Reff_Rvb_pre = NaN(1, num_mc);
             results.(ch_key).(vc).mean_Reff_Rvb_fade = NaN(1, num_mc);
+            results.(ch_key).(vc).mean_Reff_Rvb_post = NaN(1, num_mc);
+            
+            results.(ch_key).(vc).mean_K_pre = NaN(1, num_mc);
+            results.(ch_key).(vc).mean_K_fade = NaN(1, num_mc);
+            results.(ch_key).(vc).mean_K_post = NaN(1, num_mc);
+            
+            results.(ch_key).(vc).Q11_pre = NaN(1, num_mc);
             results.(ch_key).(vc).Q11_fade = NaN(1, num_mc);
+            results.(ch_key).(vc).Q11_post = NaN(1, num_mc);
+            
+            results.(ch_key).(vc).Q22_pre = NaN(1, num_mc);
             results.(ch_key).(vc).Q22_fade = NaN(1, num_mc);
+            results.(ch_key).(vc).Q22_post = NaN(1, num_mc);
+            
+            % Legacy summary fields kept for CSV compatibility
+            results.(ch_key).(vc).mean_Reff_fade = NaN(1, num_mc);
             results.(ch_key).(vc).Ppred11_fade = NaN(1, num_mc);
             results.(ch_key).(vc).Ppred22_fade = NaN(1, num_mc);
             results.(ch_key).(vc).ber = NaN(1, num_mc);
@@ -150,20 +168,43 @@ function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_
                         results.(ch_key).(vc_key).rmse_fade(mc) = sqrt(mean(err(fade_idx).^2));
                         results.(ch_key).(vc_key).rmse_post(mc) = sqrt(mean(err(post_idx).^2));
                         results.(ch_key).(vc_key).rmse_overall(mc) = sqrt(mean(err.^2));
-                        results.(ch_key).(vc_key).mean_K_fade(mc) = mean(meta.K_gain(1, fade_idx));
-                        results.(ch_key).(vc_key).mean_Reff_fade(mc) = mean(meta.R_eff(fade_idx));
+                        
+                        if isfield(meta, 'm_reliability')
+                            results.(ch_key).(vc_key).m_pre(mc) = median(meta.m_reliability(pre_idx), 'omitnan');
+                            results.(ch_key).(vc_key).m_fade(mc) = median(meta.m_reliability(fade_idx), 'omitnan');
+                            results.(ch_key).(vc_key).m_post(mc) = median(meta.m_reliability(post_idx), 'omitnan');
+                        end
+                        
+                        if isfield(meta, 'R_eff') && isfield(meta, 'R_vb')
+                            ratio = meta.R_eff ./ max(meta.R_vb, eps);
+                            results.(ch_key).(vc_key).mean_Reff_Rvb_pre(mc) = median(ratio(pre_idx), 'omitnan');
+                            results.(ch_key).(vc_key).mean_Reff_Rvb_fade(mc) = median(ratio(fade_idx), 'omitnan');
+                            results.(ch_key).(vc_key).mean_Reff_Rvb_post(mc) = median(ratio(post_idx), 'omitnan');
+                        end
+                        
+                        if isfield(meta, 'K_gain')
+                            results.(ch_key).(vc_key).mean_K_pre(mc) = median(meta.K_gain(1, pre_idx), 'omitnan');
+                            results.(ch_key).(vc_key).mean_K_fade(mc) = median(meta.K_gain(1, fade_idx), 'omitnan');
+                            results.(ch_key).(vc_key).mean_K_post(mc) = median(meta.K_gain(1, post_idx), 'omitnan');
+                        end
                         
                         if isfield(meta, 'Q_diag')
-                            results.(ch_key).(vc_key).Q11_fade(mc) = mean(meta.Q_diag(1, fade_idx));
-                            results.(ch_key).(vc_key).Q22_fade(mc) = mean(meta.Q_diag(2, fade_idx));
+                            results.(ch_key).(vc_key).Q11_pre(mc) = median(meta.Q_diag(1, pre_idx), 'omitnan');
+                            results.(ch_key).(vc_key).Q11_fade(mc) = median(meta.Q_diag(1, fade_idx), 'omitnan');
+                            results.(ch_key).(vc_key).Q11_post(mc) = median(meta.Q_diag(1, post_idx), 'omitnan');
+                            
+                            results.(ch_key).(vc_key).Q22_pre(mc) = median(meta.Q_diag(2, pre_idx), 'omitnan');
+                            results.(ch_key).(vc_key).Q22_fade(mc) = median(meta.Q_diag(2, fade_idx), 'omitnan');
+                            results.(ch_key).(vc_key).Q22_post(mc) = median(meta.Q_diag(2, post_idx), 'omitnan');
                         end
+                        
+                        if isfield(meta, 'R_eff')
+                            results.(ch_key).(vc_key).mean_Reff_fade(mc) = mean(meta.R_eff(fade_idx));
+                        end
+                        
                         if isfield(meta, 'P_pred_diag')
                             results.(ch_key).(vc_key).Ppred11_fade(mc) = mean(meta.P_pred_diag(1, fade_idx));
                             results.(ch_key).(vc_key).Ppred22_fade(mc) = mean(meta.P_pred_diag(2, fade_idx));
-                        end
-                        
-                        if isfield(meta, 'R_vb')
-                            results.(ch_key).(vc_key).mean_Reff_Rvb_fade(mc) = mean(meta.R_eff(fade_idx) ./ max(meta.R_vb(fade_idx), eps));
                         end
                     end
                 catch ME

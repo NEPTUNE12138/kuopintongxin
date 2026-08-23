@@ -1,7 +1,7 @@
 PILOT-1: 1
 PILOT-2: 1
 PILOT-3: PASS (Pass=1)
-PILOT-4: 1
+PILOT-4: PASS (Pass=1)
 PILOT-5: 1
 PILOT-6: 1
 

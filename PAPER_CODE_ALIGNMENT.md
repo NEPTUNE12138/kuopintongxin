@@ -43,7 +43,8 @@
 - Pilot: READY ONLY IF corrected FINAL-1..10 pass
 - Paper: NOT RUN
 
-*Status: FROZEN FOR PILOT*
+*Status: 200-MC Pilot: ALL PREDECLARED GATES PASS*
+*Status: 3000-MC Paper: READY, NOT RUN*
 
 *Note: The SyncFailRate metric reflects post-acquisition receiver processing failure rate (ReceiverFailRate), as the coarse synchronizer does not use a calibrated detector threshold.*
 

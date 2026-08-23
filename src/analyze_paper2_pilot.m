@@ -70,7 +70,7 @@ function analyze_paper2_pilot()
     
     csv_m = fullfile(out_dir, 'pilot_mechanism_table.csv');
     fid_m = fopen(csv_m, 'w');
-    fprintf(fid_m, 'Profile,Variant,Median_m_PRE,Median_m_FADE,Median_m_POST,Median_Reff_Rvb_PRE,Median_Reff_Rvb_FADE,Median_Reff_Rvb_POST,Median_K_PRE,Median_K_FADE,Median_K_POST,Median_Q11,Median_Q22\n');
+    fprintf(fid_m, 'Profile,Variant,Median_m_PRE,Median_m_FADE,Median_m_POST,Median_Reff_Rvb_PRE,Median_Reff_Rvb_FADE,Median_Reff_Rvb_POST,Median_K_PRE,Median_K_FADE,Median_K_POST,Median_Q11_PRE,Median_Q11_FADE,Median_Q11_POST,Median_Q22_PRE,Median_Q22_FADE,Median_Q22_POST\n');
     
     for ch = 1:num_ch
         ch_name = D_stress.cfg.channels{ch, 2};
@@ -113,6 +113,13 @@ function analyze_paper2_pilot()
             if isfield(res, 'Q11_fade'), m_q11 = median(res.Q11_fade(valid_mask), 'omitnan'); end
             if isfield(res, 'Q22_fade'), m_q22 = median(res.Q22_fade(valid_mask), 'omitnan'); end
             
+            m_q11_pre = NaN; m_q11_post = NaN;
+            m_q22_pre = NaN; m_q22_post = NaN;
+            if isfield(res, 'Q11_pre'), m_q11_pre = median(res.Q11_pre(valid_mask), 'omitnan'); end
+            if isfield(res, 'Q11_post'), m_q11_post = median(res.Q11_post(valid_mask), 'omitnan'); end
+            if isfield(res, 'Q22_pre'), m_q22_pre = median(res.Q22_pre(valid_mask), 'omitnan'); end
+            if isfield(res, 'Q22_post'), m_q22_post = median(res.Q22_post(valid_mask), 'omitnan'); end
+            
             fprintf(fid_s, '%s,%s,%d,%d,%.4f,%.4f,%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
                 ch_name, var_name, stats.Trials_Total, stats.Trials_Valid, val_rate, fail_rate, ...
                 stats.BER_Valid, stats.FER_Overall, rm_o(2), rm_pre, rm_f(2), rm_post, ...
@@ -120,9 +127,9 @@ function analyze_paper2_pilot()
                 m_m_pre, m_m_fade, m_m_post, m_rr_pre, m_rr_fade, m_rr_post, ...
                 m_k_pre, m_k_fade, m_k_post, m_q11, m_q22);
                 
-            fprintf(fid_m, '%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
+            fprintf(fid_m, '%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
                 ch_name, var_name, m_m_pre, m_m_fade, m_m_post, m_rr_pre, m_rr_fade, m_rr_post, ...
-                m_k_pre, m_k_fade, m_k_post, m_q11, m_q22);
+                m_k_pre, m_k_fade, m_k_post, m_q11_pre, m_q11, m_q11_post, m_q22_pre, m_q22, m_q22_post);
         end
     end
     fclose(fid_s);
@@ -334,6 +341,7 @@ function analyze_paper2_pilot()
     
     % PILOT-4: mechanism consistency
     P4_pass = true;
+    P4_status = 'PASS';
     for ch = 1:num_ch
         ch_key = sprintf('CH%d', ch);
         res = D_stress.results.(ch_key).E_FQ;
@@ -348,11 +356,18 @@ function analyze_paper2_pilot()
         m_q11 = NaN; if isfield(res, 'Q11_fade'), m_q11 = median(res.Q11_fade(valid), 'omitnan'); end
         m_q22 = NaN; if isfield(res, 'Q22_fade'), m_q22 = median(res.Q22_fade(valid), 'omitnan'); end
         
-        if ~isnan(m_m_f) && ~isnan(m_m_p) && ~(m_m_f < m_m_p), P4_pass = false; end
-        if ~isnan(m_rr_f) && ~isnan(m_rr_p) && ~(m_rr_f > m_rr_p), P4_pass = false; end
-        if ~isnan(m_k_f) && ~isnan(m_k_p) && ~(m_k_f < m_k_p), P4_pass = false; end
-        if ~isnan(m_q11) && abs(m_q11 - 0.05) > 1e-5, P4_pass = false; end
-        if ~isnan(m_q22) && abs(m_q22 - 0.002) > 1e-5, P4_pass = false; end
+        required = [m_m_p, m_m_f, m_rr_p, m_rr_f, m_k_p, m_k_f, m_q11, m_q22];
+        
+        if any(~isfinite(required))
+            P4_pass = false;
+            P4_status = 'PILOT4_MISSING_TELEMETRY';
+        else
+            if ~(m_m_f < m_m_p), P4_pass = false; P4_status = 'PILOT4_FAIL_M_RELIABILITY'; end
+            if ~(m_rr_f > m_rr_p), P4_pass = false; P4_status = 'PILOT4_FAIL_REFF_RVB'; end
+            if ~(m_k_f < m_k_p), P4_pass = false; P4_status = 'PILOT4_FAIL_K_GAIN'; end
+            if abs(m_q11 - 0.05) > 1e-6, P4_pass = false; P4_status = 'PILOT4_FAIL_Q11_NOT_FROZEN'; end
+            if abs(m_q22 - 0.002) > 1e-6, P4_pass = false; P4_status = 'PILOT4_FAIL_Q22_NOT_FROZEN'; end
+        end
     end
     
     % PILOT-5: communication non-inferiority
@@ -387,7 +402,7 @@ function analyze_paper2_pilot()
     fprintf(fid_g, 'PILOT-1: %d\n', P1_pass);
     fprintf(fid_g, 'PILOT-2: %d\n', P2_pass);
     fprintf(fid_g, 'PILOT-3: %s (Pass=%d)\n', P3_status, P3_pass);
-    fprintf(fid_g, 'PILOT-4: %d\n', P4_pass);
+    fprintf(fid_g, 'PILOT-4: %s (Pass=%d)\n', P4_status, P4_pass);
     fprintf(fid_g, 'PILOT-5: %d\n', P5_pass);
     fprintf(fid_g, 'PILOT-6: %d\n', P6_pass);
     
@@ -395,13 +410,15 @@ function analyze_paper2_pilot()
     if ~P2_pass
         fprintf(fid_g, 'PILOT_PRIMARY_TRACKING_GATE_FAIL\nPAPER_BLOCKED\n');
     elseif ~P3_pass
-        fprintf(fid_g, '%s\n', P3_status);
+        fprintf(fid_g, '%s\nPAPER_BLOCKED\n', P3_status);
+    elseif ~P4_pass
+        fprintf(fid_g, '%s\nPAPER_BLOCKED\n', P4_status);
     elseif ~P5_pass
         fprintf(fid_g, 'PILOT_TRACKING_PASS_COMMUNICATION_GATE_FAIL\nPAPER_BLOCKED_PENDING_SCIENTIFIC_REVIEW\n');
     elseif P1_pass && P2_pass && P3_pass && P4_pass && P5_pass && P6_pass
         fprintf(fid_g, 'PILOT_200MC_PASS\nPAPER_3000MC_READY\nPAPER_NOT_RUN\n');
     else
-        fprintf(fid_g, 'PILOT_FAIL_OTHER\n');
+        fprintf(fid_g, 'PILOT_FAIL_OTHER\nPAPER_BLOCKED\n');
     end
     fprintf(fid_g, 'WAITING FOR SCIENTIFIC REVIEW BEFORE 3000-MC PAPER RUN.\n');
     fclose(fid_g);

@@ -1,4 +1,4 @@
-pilot_basis_sha = 2d88efc37e3c0333a8ee99ade388cca43c01d902
+pilot_basis_sha = 61adf3a369da0b1f917e4b5cf558933d01130976
 final tracker = E-FQ
 Q = [0.05,0.002]
 Kcal = 8
