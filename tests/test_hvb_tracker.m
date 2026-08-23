@@ -3,6 +3,10 @@ function test_hvb_tracker()
 
     cfg = paper2_config('quick');
     
+    % Override frozen configuration to test the HVB module's adaptive capabilities
+    cfg.hvb.q_adaptation_mode = 'both';
+    cfg.hvb.use_q_freeze = true;
+    cfg.q_freeze_reliability = 0.2;    
     % Initial states
     x_k = [0; 0];
     P_k = eye(2);

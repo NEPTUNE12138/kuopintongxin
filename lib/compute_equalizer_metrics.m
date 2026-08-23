@@ -31,7 +31,7 @@ function metrics = compute_equalizer_metrics(h_true, w, h_hat, cfg)
     else
         rms_delay_spread = 0;
     end
-    metrics.rms_delay_spread = rms_delay_spread;
+    metrics.input_channel_rms_delay_spread = rms_delay_spread;
     
     if isempty(w)
         % NO-EQ case: use true channel directly
@@ -40,6 +40,8 @@ function metrics = compute_equalizer_metrics(h_true, w, h_hat, cfg)
         total_energy = sum(abs(h_true_padded).^2);
         metrics.main_tap_concentration = main_energy / max(total_energy, eps);
         metrics.residual_isi_fraction = max(0, (total_energy - main_energy) / max(total_energy, eps));
+        
+        metrics.combined_rms_delay_spread = rms_delay_spread;
         
         % PSLR
         sidelobes = abs(h_true_padded);
@@ -59,6 +61,17 @@ function metrics = compute_equalizer_metrics(h_true, w, h_hat, cfg)
         total_energy = sum(abs(g).^2);
         metrics.main_tap_concentration = main_energy / max(total_energy, eps);
         metrics.residual_isi_fraction = max(0, (total_energy - main_energy) / max(total_energy, eps));
+        
+        % Combined RMS Delay Spread
+        tap_power_g = abs(g).^2;
+        total_power_g = sum(tap_power_g);
+        if total_power_g > 0
+            tap_indices_g = (0:length(g)-1)';
+            mean_delay_g = sum(tap_indices_g .* tap_power_g) / total_power_g;
+            metrics.combined_rms_delay_spread = sqrt(sum((tap_indices_g - mean_delay_g).^2 .* tap_power_g) / total_power_g);
+        else
+            metrics.combined_rms_delay_spread = 0;
+        end
         
         % PSLR
         sidelobes = abs(g);

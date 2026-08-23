@@ -61,13 +61,19 @@ function cfg = paper2_config(mode)
     cfg.q_freeze_reliability = 0.2; % Freeze Q if m_k < 0.2
     
     % Variant D heuristic penalty parameters
+    % Legacy Variant D heuristic penalty parameters
     cfg.var_D_A = 50;
     cfg.var_D_b = 8;
-    
-    % Diagnostic Flags (Round 3)
+
+    cfg.hvb.lambda_vb = 1.0;
+    cfg.hvb.q_adaptation_mode = 'fixed';
     cfg.hvb.use_heteroscedastic = true;
-    cfg.hvb.use_q_freeze = true;
-    cfg.reliability.mode = 'absolute';
+    cfg.hvb.heteroscedastic_c1 = 1;
+    cfg.hvb.heteroscedastic_c2 = 1/50;  % Frozen value
+    cfg.final_Q = diag([0.05, 0.002]);  % Frozen process covariance
+    
+    % Final Reliability Calibration
+    cfg.reliability.mode = 'relative_calibrated';
     cfg.reliability.calibration_symbols = 8;
     cfg.kappa_side = 1.5;
     
@@ -76,6 +82,7 @@ function cfg = paper2_config(mode)
     
     % Equalizer (common front-end, disabled by default)
     cfg.equalizer.enabled = false;
+    cfg.equalizer.adopted = false;
     cfg.equalizer.channel_len = cfg.symbol_samples;
     cfg.equalizer.eq_len = cfg.symbol_samples;
     cfg.equalizer.decision_delay = cfg.equalizer.channel_len - 1;
@@ -83,13 +90,17 @@ function cfg = paper2_config(mode)
     cfg.equalizer.method = 'preamble_rls_mmse';
     
     % Frozen state initialization
-    cfg.final_tracker_variant = 'UNRESOLVED';
-    cfg.c2_frozen = false;
+    cfg.final_tracker_variant = 'E-FQ';
+    cfg.final_architecture_frozen = true;
+    cfg.c2 = 1/50;
+    cfg.c2_frozen = true;
     cfg.trm_primary_contribution = false;
+    cfg.frontend.use_trm = false;
     
     %% Simulation & Monte Carlo Modes
     cfg.master_seed = 20260823;
     cfg.snr_range = -14:1:0;
+    cfg.pilot_snr_range = []; % To be populated by scan
     
     switch mode
         case 'quick'

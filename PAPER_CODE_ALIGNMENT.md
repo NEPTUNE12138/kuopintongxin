@@ -28,16 +28,21 @@
 - [x] Phase 8: Results & Documentation
 
 ## Status of Execution
-- Round-4 Algorithm Freeze: HALTED
-- Full Quick Pipeline: FAILED / NOT COMPLETE
-- E-FQ held-out tracker architecture: PASS
-- Common MMSE equalizer: REJECTED / NOT REQUIRED
-- Final architecture: no-EQ E-FQ candidate
-- TRM primary contribution: REJECTED
-- Final tracker parameters: awaiting c2 freeze
-- Bellhop local-cluster model: VERIFIED
-- Pilot: NOT RUN
+- Bellhop local-cluster channel model: VERIFIED
+- Hybrid TRM primary contribution: REJECTED
+- Common MMSE equalizer: REJECTED / NOT ADOPTED
+- Adaptive-Q E-CAL: REJECTED
+- E-FQ fixed-Q architecture: HELD-OUT CONFIRMED
+- Final front-end: HFM synchronization only
+- Final process covariance: Q=diag([0.05,0.002]) FROZEN
+- Final Kcal: 8 FROZEN
+- Final c2: 1/50 FROZEN
+- Final publication variants: IAE / VB-FQ / E-FQ
+- Pilot SNR range: [Pending Scan]
+- Pilot: READY BUT NOT RUN
 - Paper: NOT RUN
+
+*Archival Note: Round-7 RMS-delay-spread column was input-channel RDS; not used in adoption gates.*
 
 ## Unimplemented / Rejected Claims
 - 2D SNR-Delay Dynamic Routing (Explicitly removed)

@@ -7,7 +7,8 @@ function main_WUWNET_Paper_Validation(mode)
     end
     
     cfg = paper2_config(mode);
-    variants = {'A', 'B', 'C', 'D', 'E'};
+    variants = {'A', 'VB-FQ', 'E-FQ'};
+    csv_labels = {'IAE', 'VB-FQ', 'E-FQ'};
     num_variants = length(variants);
     
     num_snr = length(cfg.snr_range);
@@ -97,15 +98,15 @@ function main_WUWNET_Paper_Validation(mode)
     timestamp = datestr(now, 'yyyymmdd_HHMMSS');
     csv_file = fullfile(out_dir, sprintf('paper2_ber_validation_%s.csv', timestamp));
     fid = fopen(csv_file, 'w');
-    fprintf(fid, 'Channel,SNR_dB,Variant,Valid_Trials,Sync_Fail_Rate,FER,BER,Wilson_Lower,Wilson_Upper\n');
+    fprintf(fid, 'Channel,SNR_dB,Variant,Trials_Valid,SyncFailRate,FER_Overall,FER_Valid,BER_Valid,Wilson_Lower,Wilson_Upper\n');
     
-    % To be compatible with previous scripts, create ber_results struct/matrix
+    % Legacy wrapper output
     ber_results = NaN(num_channels, num_snr, num_variants, num_mc);
     
     for ch_idx = 1:num_channels
         fprintf('Channel %d:\n', ch_idx);
         for v = 1:num_variants
-            var_char = variants{v};
+            label = csv_labels{v};
             
             total_valid_across_snrs = 0;
             total_trials_across_snrs = num_mc * num_snr;
@@ -113,29 +114,31 @@ function main_WUWNET_Paper_Validation(mode)
             for snr_idx = 1:num_snr
                 snr_db = cfg.snr_range(snr_idx);
                 trial_errs = squeeze(raw_errors(ch_idx, snr_idx, v, :))';
+                valid_flags = ~isnan(trial_errs);
                 
-                % Fill in the legacy ber_results mapping (just trial_errs / bits)
                 ber_results(ch_idx, snr_idx, v, :) = trial_errs / cfg.num_data_bits;
                 
-                stats = compute_paper2_ber_statistics(trial_errs, cfg.num_data_bits);
+                stats = compute_paper2_ber_statistics(trial_errs, valid_flags, cfg.num_data_bits);
                 
-                total_valid_across_snrs = total_valid_across_snrs + stats.valid_trials;
+                total_valid_across_snrs = total_valid_across_snrs + stats.Trials_Valid;
                 
-                fprintf(fid, '%s,%d,%s,%d,%.4f,%.4f,%.6f,%.6f,%.6f\n', ...
-                    cfg.channels{ch_idx, 2}, snr_db, var_char, ...
-                    stats.valid_trials, stats.sync_fail_rate, stats.frame_error_rate, ...
-                    stats.ber, stats.wilson_ci(1), stats.wilson_ci(2));
+                fprintf(fid, '%s,%d,%s,%d,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f\n', ...
+                    cfg.channels{ch_idx, 2}, snr_db, label, ...
+                    stats.Trials_Valid, stats.SyncFailRate, stats.FER_Overall, stats.FER_Valid, ...
+                    stats.BER_Valid, stats.Wilson_Lower_ValidBER, stats.Wilson_Upper_ValidBER);
             end
             
-            % Print aggregate for console
             sync_fail_rate = 1 - (total_valid_across_snrs / total_trials_across_snrs);
             fprintf('  Variant %s: Valid Trials %d/%d (Fail Rate %.2f%%)\n', ...
-                var_char, total_valid_across_snrs, total_trials_across_snrs, sync_fail_rate * 100);
+                label, total_valid_across_snrs, total_trials_across_snrs, sync_fail_rate * 100);
         end
     end
     fclose(fid);
     
     save_file = fullfile(out_dir, sprintf('paper2_ber_validation_%s.mat', timestamp));
-    save(save_file, 'raw_errors', 'ber_results', 'cfg', 'variants', 'mode');
+    save(save_file, 'raw_errors', 'ber_results', 'cfg', 'variants', 'csv_labels', 'mode');
     fprintf('Validation results saved to:\n  %s\n  %s\n', save_file, csv_file);
+    
+    % Maintain ber_results.csv link for backwards compat
+    copyfile(csv_file, fullfile(out_dir, 'ber_results.csv'));
 end

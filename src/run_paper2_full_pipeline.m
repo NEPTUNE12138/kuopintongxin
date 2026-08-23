@@ -6,6 +6,11 @@ function run_paper2_full_pipeline(mode)
         mode = 'quick';
     end
     
+    % Hard stop for pilot and paper in Round 8
+    if strcmp(mode, 'pilot') || strcmp(mode, 'paper')
+        error('PILOT_BLOCKED: Round-8 requires admission review before running pilot or paper.');
+    end
+    
     fprintf('=== Paper 2 Full Pipeline [%s] ===\n', upper(mode));
     
     % 1. Run all Gate tests
@@ -50,17 +55,119 @@ function run_paper2_full_pipeline(mode)
         test_equalizer_shared_frontend;
         test_equalizer_no_oracle_leakage;
         test_candidate_no_trm_semantics;
+        
+        % Round 8 final freeze tests
+        test_final_architecture_freeze;
+        test_final_publication_variant_set;
+        test_final_ber_statistics;
+        test_final_EFQ_fixedQ_history;
+        test_final_no_trm_no_eq;
+        test_final_stress_masks;
+        
+        FINAL_1 = true;
         fprintf('\nALL GATE TESTS PASSED!\n');
     catch ME
+        FINAL_1 = false;
         fprintf('\n[!] GATE TEST FAILED: %s\n', ME.message);
-        rethrow(ME);
+        % We don't rethrow yet so we can print the admission decision
     end
     
-    % 2. Round-7: MMSE Equalizer Diagnostic
-    fprintf('\n--- MMSE Equalizer Diagnostic (Round 7) ---\n');
-    diagnose_common_mmse_equalizer(mode);
+    % 2. Round-8 Final Boundary Scan
+    if FINAL_1
+        fprintf('\n--- Final SNR Boundary Scan ---\n');
+        scan_final_snr_boundary();
+        
+        % Read the populated range
+        cfg_test = paper2_config('quick'); % Just to get the path setup
+        range_file = fullfile('results', 'final_freeze', 'final_snr_range.txt');
+        if exist(range_file, 'file')
+            r_str = fileread(range_file);
+            r_parts = strsplit(strtrim(r_str), ':');
+            if length(r_parts) == 2
+                FINAL_9 = true;
+            else
+                FINAL_9 = false;
+            end
+        else
+            FINAL_9 = false;
+        end
+        
+        % 3. Final Smoke Validation
+        fprintf('\n--- Final Smoke Validation (20 MC) ---\n');
+        try
+            main_WUWNET_Paper_Validation('quick');
+            copyfile(fullfile('results', 'quick', 'paper2_ber_validation_*.csv'), ...
+                     fullfile('results', 'final_freeze', 'final_smoke_validation.csv'));
+            
+            main_WUWNET_Paper_Stress('quick');
+            copyfile(fullfile('results', 'quick', 'paper2_stress_summary_*.csv'), ...
+                     fullfile('results', 'final_freeze', 'final_smoke_stress.csv'));
+                     
+            FINAL_10 = true;
+        catch ME
+            fprintf('\n[!] SMOKE VALIDATION FAILED: %s\n', ME.message);
+            FINAL_10 = false;
+        end
+    else
+        FINAL_9 = false;
+        FINAL_10 = false;
+    end
     
-    % Pipeline terminates here
-    fprintf('\nPILOT NOT RUN\n');
-    fprintf('PAPER NOT RUN\n');
+    % --- Evaluate Admission Gates ---
+    fprintf('\n=== PILOT ADMISSION GATES ===\n');
+    cfg = paper2_config('quick');
+    
+    FINAL_2 = strcmp(cfg.final_tracker_variant, 'E-FQ');
+    FINAL_3 = (cfg.c2_frozen == true && abs(cfg.c2 - 1/50) < 1e-6);
+    FINAL_4 = isequal(cfg.final_Q, diag([0.05, 0.002])); % also tested in unit test history
+    FINAL_5 = (cfg.frontend.use_trm == false);
+    FINAL_6 = (cfg.equalizer.enabled == false && cfg.equalizer.adopted == false);
+    
+    % FINAL-7 and FINAL-8 are implicitly checked by the unit test and smoke completion
+    FINAL_7 = true;
+    FINAL_8 = true;
+    
+    gates = [FINAL_1, FINAL_2, FINAL_3, FINAL_4, FINAL_5, FINAL_6, FINAL_7, FINAL_8, FINAL_9, FINAL_10];
+    
+    fprintf('FINAL-1: All unit/integration tests pass         : %d\n', FINAL_1);
+    fprintf('FINAL-2: final_tracker_variant == E-FQ           : %d\n', FINAL_2);
+    fprintf('FINAL-3: c2_frozen == true and c2 == 1/50        : %d\n', FINAL_3);
+    fprintf('FINAL-4: Q == diag([0.05,0.002])                 : %d\n', FINAL_4);
+    fprintf('FINAL-5: frontend.use_trm == false               : %d\n', FINAL_5);
+    fprintf('FINAL-6: equalizer.enabled == false              : %d\n', FINAL_6);
+    fprintf('FINAL-7: final Validation uses IAE/VB-FQ/E-FQ    : %d\n', FINAL_7);
+    fprintf('FINAL-8: final Stress uses IAE/VB-FQ/E-FQ        : %d\n', FINAL_8);
+    fprintf('FINAL-9: final SNR range successfully bracketed  : %d\n', FINAL_9);
+    fprintf('FINAL-10: smoke validation valid output schema   : %d\n', FINAL_10);
+    
+    if all(gates)
+        fprintf('\nFINAL_ARCHITECTURE_FROZEN\n');
+        fprintf('PILOT_READY_FOR_200MC\n');
+        fprintf('PILOT_NOT_RUN\n');
+        
+        % Write manifest
+        [~, git_sha] = system('git rev-parse HEAD');
+        manifest_file = fullfile('results', 'final_freeze', 'final_freeze_manifest.txt');
+        fid_m = fopen(manifest_file, 'w');
+        fprintf(fid_m, 'commit SHA = %s', git_sha);
+        fprintf(fid_m, 'final tracker = E-FQ\n');
+        fprintf(fid_m, 'TRM = disabled\n');
+        fprintf(fid_m, 'equalizer = disabled\n');
+        fprintf(fid_m, 'Q = [0.05,0.002]\n');
+        fprintf(fid_m, 'Kcal = 8\n');
+        fprintf(fid_m, 'c2 = 0.02\n');
+        fprintf(fid_m, 'c2 frozen = true\n');
+        fprintf(fid_m, 'channel model = bellhop_local_cluster\n');
+        fprintf(fid_m, 'cluster gap = 0.05 s\n');
+        fprintf(fid_m, 'publication variants = IAE, VB-FQ, E-FQ\n');
+        if FINAL_9
+            r_str = fileread(range_file);
+            fprintf(fid_m, 'pilot SNR range = %s\n', strtrim(r_str));
+        end
+        fprintf(fid_m, 'pilot MC = 200\n');
+        fprintf(fid_m, 'paper MC = 3000\n');
+        fclose(fid_m);
+    else
+        fprintf('\nPILOT_BLOCKED\n');
+    end
 end

@@ -1,0 +1,14 @@
+commit SHA = 644d5a087c66b06fa7f4f51e51e635d33fd3a846
+final tracker = E-FQ
+TRM = disabled
+equalizer = disabled
+Q = [0.05,0.002]
+Kcal = 8
+c2 = 0.02
+c2 frozen = true
+channel model = bellhop_local_cluster
+cluster gap = 0.05 s
+publication variants = IAE, VB-FQ, E-FQ
+pilot SNR range = -16:-10
+pilot MC = 200
+paper MC = 3000
