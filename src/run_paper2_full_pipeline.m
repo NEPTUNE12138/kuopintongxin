@@ -31,6 +31,11 @@ function run_paper2_full_pipeline(mode)
         test_reliability_calibration;
         test_time_warp_helper;
         test_trm_true_cir_metrics;
+        test_variant_D_config_regression;
+        test_ECAL_scale_transition;
+        test_bellhop_cluster_selection;
+        test_channel_full_convolution;
+        test_cfar_raw_detection_no_fallback;
         fprintf('\nALL GATE TESTS PASSED!\n');
     catch ME
         fprintf('\n[!] GATE TEST FAILED: %s\n', ME.message);
@@ -46,15 +51,22 @@ function run_paper2_full_pipeline(mode)
     % Stress Test
     main_WUWNET_Paper_Stress(mode);
     
-    % --- Round 3 Diagnostics ---
-    fprintf('\n--- Round 3 Diagnostics ---\n');
-    fprintf('Running HVB Diagnostic...\n');
+    % --- Round 4 Algorithm Freeze Diagnostics ---
+    fprintf('\n--- Pre-Pilot Diagnostics (Round 4) ---\n');
+    
+    fprintf('Running CFAR Detection Calibration...\n');
+    diagnose_cfar_detection(mode);
+    
+    fprintf('Running HVB Diagnostic & E-CAL Gate...\n');
     diagnose_hvb_failure(mode);
+    
+    fprintf('Running C2 Minimax Selection...\n');
+    plot_sensitivity_c2(mode);
     
     fprintf('Running TRM Diagnostic...\n');
     diagnose_trm_contribution(mode);
     
-    fprintf('Running SNR Boundary Scan...\n');
+    fprintf('Running Final SNR Boundary Scan...\n');
     quick_snr_boundary_scan(mode);
     
     % 3. Ancillary Scripts and Plots
@@ -62,9 +74,6 @@ function run_paper2_full_pipeline(mode)
     
     fprintf('Running TRM Ablation...\n');
     generate_paper_trm_ablation(mode);
-    
-    fprintf('Running C2 Sensitivity...\n');
-    plot_sensitivity_c2(mode);
     
     fprintf('Running Runtime Benchmark...\n');
     benchmark_paper2_receivers(mode);

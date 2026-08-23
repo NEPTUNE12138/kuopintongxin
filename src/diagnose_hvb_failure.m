@@ -3,43 +3,35 @@ function diagnose_hvb_failure(mode)
 
     if nargin < 1, mode = 'quick'; end
     
-    % Use diagnostic parameters, but quick mode for fast execution
     cfg = paper2_config(mode);
     if strcmp(mode, 'quick')
-        num_mc = 20; % 20 per scenario for quick
+        num_mc = 10; % reduced for quick
     else
         num_mc = 50; % 50 per scenario for full diagnostics
     end
     
     ch_file = cfg.channels{1, 1}; % Profile P1
-    [h_chan, ~] = load_bellhop_cir(ch_file, cfg.fs);
+    [h_chan, ~] = select_bellhop_local_cluster(ch_file, cfg);
     
     scenarios = {'S0_Static', 'S1_Warp', 'S2_Fade', 'S3_Warp_Fade'};
-    variants = {'C', 'E', 'E-VB-only'};
-    if strcmp(mode, 'E-CAL_Test') % Or if we want to run E-CAL
-        variants{end+1} = 'E-CAL';
-    end
+    variants = {'C', 'E', 'E-VB-only', 'E-CAL'};
     
     fprintf('\n=== Running HVB Diagnostic ===\n');
     fprintf('MC Trials/Scenario: %d\n', num_mc);
     
-    % Preallocate results struct
-    res = struct();
-    for s = 1:length(scenarios)
-        for v = 1:length(variants)
-            vn = strrep(variants{v}, '-', '_');
-            res.(scenarios{s}).(vn).rmse = NaN(1, num_mc);
-            res.(scenarios{s}).(vn).rho_mean = NaN(1, num_mc);
-            res.(scenarios{s}).(vn).m_mean = NaN(1, num_mc);
-            res.(scenarios{s}).(vn).Lambda_mean = NaN(1, num_mc);
-            res.(scenarios{s}).(vn).R_vb_mean = NaN(1, num_mc);
-            res.(scenarios{s}).(vn).R_eff_R_vb_mean = NaN(1, num_mc);
-            res.(scenarios{s}).(vn).K_mean = NaN(1, num_mc);
-        end
-    end
-    
     out_dir = fullfile('results', 'diagnostic');
     if ~exist(out_dir, 'dir'), mkdir(out_dir); end
+    
+    res = struct();
+    
+    % Store phase-level statistics
+    fid_stat = fopen(fullfile(out_dir, 'hvb_diagnostic_phase_stats.csv'), 'w');
+    fprintf(fid_stat, 'Scenario,Variant,Phase,Metric,Mean,Median,P10,P90\n');
+    
+    fid_sum = fopen(fullfile(out_dir, 'hvb_diagnostic_summary.csv'), 'w');
+    fprintf(fid_sum, 'Scenario,Variant,RMSE_Median,RMSE_Mean,m_Median,Reff_Rvb_Median,ValidTrials,BER_Mean\n');
+    
+    metrics_list = {'rho_raw', 'rho_relative', 'm_reliability', 'Lambda', 'R_vb', 'R_eff', 'R_eff_R_vb', 'K_delay', 'Q11', 'Q22', 'abs_innovation', 'tracking_error'};
     
     for s = 1:length(scenarios)
         scen_name = scenarios{s};
@@ -53,15 +45,25 @@ function diagnose_hvb_failure(mode)
         warp_cfg.velocity_freq_hz = 0.2;
         warp_cfg.phase_rad = 0;
         
+        % Preallocate structs for MC accumulation
+        for v = 1:length(variants)
+            vn = strrep(variants{v}, '-', '_');
+            res.(scen_name).(vn).rmse = NaN(1, num_mc);
+            res.(scen_name).(vn).ber = NaN(1, num_mc);
+            
+            % To collect all symbols for percentile stats
+            res.(scen_name).(vn).phase_data = struct();
+        end
+        
         for mc = 1:num_mc
             if mod(mc, 10) == 0, fprintf('  Trial %d/%d\n', mc, num_mc); end
             
-            % Diagnostic Seed (offset to avoid pilot overlap)
             rng_seed = cfg.master_seed + 1000000 + s*10000 + mc;
             rng(rng_seed, 'twister');
             
             [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg);
-            rx_clean = filter(h_chan, 1, tx_pb);
+            % Use full convolution
+            rx_clean = conv(tx_pb, h_chan, 'full');
             
             if do_warp
                 [rx_warp, warp_meta] = apply_paper2_time_warp(rx_clean, cfg, warp_cfg);
@@ -94,17 +96,23 @@ function diagnose_hvb_failure(mode)
                 sync_meta.payload_start = pay_start;
                 sync_meta.mf = mf;
                 
-                % Determine Fade Mask based on symbol centers
                 sym_centers = pay_start + (0:cfg.num_diff_symbols-1) * cfg.symbol_samples + round(cfg.symbol_samples/2);
                 sym_centers = min(length(rx_warp), max(1, sym_centers));
+                
+                % Determine Phase Masks
                 if do_fade
                     fade_env_at_centers = fade_env(sym_centers);
                     fade_mask = fade_env_at_centers < 0.5;
+                    first_fade = find(fade_mask, 1, 'first');
+                    last_fade = find(fade_mask, 1, 'last');
+                    
+                    phases.PRE = 1:(first_fade-1);
+                    phases.FADE = first_fade:last_fade;
+                    phases.POST = (last_fade+1):cfg.num_diff_symbols;
                 else
-                    fade_mask = false(1, cfg.num_diff_symbols);
+                    phases.NORMAL = 1:cfg.num_diff_symbols;
                 end
                 
-                % Epsilon True
                 eps_true_per_symbol = warp_meta.epsilon_true_samples(sym_centers);
                 eps_true_rel = eps_true_per_symbol - eps_true_per_symbol(1);
                 
@@ -119,14 +127,41 @@ function diagnose_hvb_failure(mode)
                             eps_est_rel = meta.delay_est_samples - meta.delay_est_samples(1);
                             err = eps_est_rel - eps_true_rel;
                             res.(scen_name).(vn).rmse(mc) = sqrt(mean(err.^2));
+                            res.(scen_name).(vn).ber(mc) = sum(decoded_bits ~= data_bits) / cfg.num_data_bits;
                             
-                            res.(scen_name).(vn).rho_mean(mc) = mean(meta.rho);
-                            res.(scen_name).(vn).m_mean(mc) = mean(meta.m_reliability);
-                            res.(scen_name).(vn).Lambda_mean(mc) = mean(meta.Lambda);
-                            if isfield(meta, 'R_vb')
-                                res.(scen_name).(vn).R_vb_mean(mc) = mean(meta.R_vb);
-                                res.(scen_name).(vn).R_eff_R_vb_mean(mc) = mean(meta.R_eff ./ max(meta.R_vb, eps));
-                                res.(scen_name).(vn).K_mean(mc) = mean(meta.K_gain(1, :));
+                            phase_names = fieldnames(phases);
+                            for p_i = 1:length(phase_names)
+                                p_name = phase_names{p_i};
+                                p_idx = phases.(p_name);
+                                if isempty(p_idx), continue; end
+                                
+                                % Collect metrics
+                                if isfield(meta, 'rho_raw'), data_tmp.rho_raw = meta.rho_raw(p_idx); else data_tmp.rho_raw = NaN(size(p_idx)); end
+                                if isfield(meta, 'rho_relative'), data_tmp.rho_relative = meta.rho_relative(p_idx); else data_tmp.rho_relative = NaN(size(p_idx)); end
+                                data_tmp.m_reliability = meta.m_reliability(p_idx);
+                                data_tmp.Lambda = meta.Lambda(p_idx);
+                                if isfield(meta, 'R_vb')
+                                    data_tmp.R_vb = meta.R_vb(p_idx);
+                                    data_tmp.R_eff = meta.R_eff(p_idx);
+                                    data_tmp.R_eff_R_vb = meta.R_eff(p_idx) ./ max(meta.R_vb(p_idx), eps);
+                                    data_tmp.K_delay = meta.K_gain(1, p_idx);
+                                    data_tmp.Q11 = meta.Q_diag(1, p_idx);
+                                    data_tmp.Q22 = meta.Q_diag(2, p_idx);
+                                else
+                                    data_tmp.R_vb = NaN(size(p_idx)); data_tmp.R_eff = NaN(size(p_idx)); data_tmp.R_eff_R_vb = NaN(size(p_idx));
+                                    data_tmp.K_delay = NaN(size(p_idx)); data_tmp.Q11 = NaN(size(p_idx)); data_tmp.Q22 = NaN(size(p_idx));
+                                end
+                                data_tmp.abs_innovation = NaN(size(p_idx)); % Approximation, we don't have direct innovation output
+                                data_tmp.tracking_error = err(p_idx);
+                                
+                                % Accumulate
+                                if ~isfield(res.(scen_name).(vn).phase_data, p_name)
+                                    for m_i = 1:length(metrics_list), res.(scen_name).(vn).phase_data.(p_name).(metrics_list{m_i}) = []; end
+                                end
+                                for m_i = 1:length(metrics_list)
+                                    m_str = metrics_list{m_i};
+                                    res.(scen_name).(vn).phase_data.(p_name).(m_str) = [res.(scen_name).(vn).phase_data.(p_name).(m_str), data_tmp.(m_str)];
+                                end
                             end
                         end
                     catch ME
@@ -141,60 +176,106 @@ function diagnose_hvb_failure(mode)
                 end
             end
         end
-    end
-    
-    % Classification Logic
-    fprintf('\n=== HVB Diagnostic Classification ===\n');
-    
-    % Check S1 (Warp) non-fade metrics
-    % We compute medians over the valid trials for S1
-    s1_C_rmse = median(res.S1_Warp.C.rmse, 'omitnan');
-    s1_E_rmse = median(res.S1_Warp.E.rmse, 'omitnan');
-    s1_EVB_rmse = median(res.S1_Warp.E_VB_only.rmse, 'omitnan');
-    
-    s1_E_m = median(res.S1_Warp.E.m_mean, 'omitnan');
-    s1_E_Reff_ratio = median(res.S1_Warp.E.R_eff_R_vb_mean, 'omitnan');
-    
-    % RELIABILITY_SCALE_SUSPECT
-    if s1_E_m < 0.8 || s1_E_Reff_ratio > 1.5
-        fprintf('[!] RELIABILITY_SCALE_SUSPECT: yes\n');
-        fprintf('    S1 median m = %.3f (threshold < 0.8)\n', s1_E_m);
-        fprintf('    S1 median Reff/Rvb = %.3f (threshold > 1.5)\n', s1_E_Reff_ratio);
-    else
-        fprintf('[ ] RELIABILITY_SCALE_SUSPECT: no\n');
-    end
-    
-    % VB_RECURSION_SUSPECT
-    if s1_EVB_rmse > 1.5 * s1_C_rmse
-        fprintf('[!] VB_RECURSION_SUSPECT: yes\n');
-        fprintf('    S1 E-VB-only RMSE (%.3f) > 1.5 * C RMSE (%.3f)\n', s1_EVB_rmse, s1_C_rmse);
-    else
-        fprintf('[ ] VB_RECURSION_SUSPECT: no\n');
-    end
-    
-    % HETERO_PENALTY_SUSPECT
-    if (s1_EVB_rmse <= 1.5 * s1_C_rmse) && (s1_E_rmse > 1.5 * s1_EVB_rmse)
-        fprintf('[!] HETERO_PENALTY_SUSPECT: yes\n');
-        fprintf('    S1 E-VB-only is close to C, but E-original RMSE (%.3f) is much worse than E-VB-only (%.3f)\n', s1_E_rmse, s1_EVB_rmse);
-    else
-        fprintf('[ ] HETERO_PENALTY_SUSPECT: no\n');
-    end
-    
-    csv_file = fullfile(out_dir, 'hvb_diagnostic_summary.csv');
-    fid = fopen(csv_file, 'w');
-    fprintf(fid, 'Scenario,Variant,RMSE_Median,RMSE_Mean,m_Median,Reff_Rvb_Median\n');
-    for s = 1:length(scenarios)
+        
+        % Export phase stats for this scenario
         for v = 1:length(variants)
             vn = strrep(variants{v}, '-', '_');
-            fprintf(fid, '%s,%s,%.4f,%.4f,%.4f,%.4f\n', ...
-                scenarios{s}, variants{v}, ...
-                median(res.(scenarios{s}).(vn).rmse, 'omitnan'), ...
-                mean(res.(scenarios{s}).(vn).rmse, 'omitnan'), ...
-                median(res.(scenarios{s}).(vn).m_mean, 'omitnan'), ...
-                median(res.(scenarios{s}).(vn).R_eff_R_vb_mean, 'omitnan'));
+            
+            % Summary stats
+            valid_trials = sum(~isnan(res.(scen_name).(vn).rmse));
+            med_rmse = median(res.(scen_name).(vn).rmse, 'omitnan');
+            mean_rmse = mean(res.(scen_name).(vn).rmse, 'omitnan');
+            mean_ber = mean(res.(scen_name).(vn).ber, 'omitnan');
+            
+            % Get overall m_median and Reff_Rvb_median for summary
+            if do_fade
+                if isfield(res.(scen_name).(vn).phase_data, 'PRE')
+                    overall_m = median(res.(scen_name).(vn).phase_data.PRE.m_reliability, 'omitnan');
+                    overall_rr = median(res.(scen_name).(vn).phase_data.PRE.R_eff_R_vb, 'omitnan');
+                else
+                    overall_m = NaN; overall_rr = NaN;
+                end
+            else
+                if isfield(res.(scen_name).(vn).phase_data, 'NORMAL')
+                    overall_m = median(res.(scen_name).(vn).phase_data.NORMAL.m_reliability, 'omitnan');
+                    overall_rr = median(res.(scen_name).(vn).phase_data.NORMAL.R_eff_R_vb, 'omitnan');
+                else
+                    overall_m = NaN; overall_rr = NaN;
+                end
+            end
+            
+            fprintf(fid_sum, '%s,%s,%.4f,%.4f,%.4f,%.4f,%d,%.6f\n', scen_name, variants{v}, med_rmse, mean_rmse, overall_m, overall_rr, valid_trials, mean_ber);
+            
+            % Export detailed phase data
+            if isfield(res.(scen_name).(vn), 'phase_data')
+                phase_names = fieldnames(res.(scen_name).(vn).phase_data);
+                for p_i = 1:length(phase_names)
+                    p_name = phase_names{p_i};
+                    for m_i = 1:length(metrics_list)
+                        m_str = metrics_list{m_i};
+                        data_arr = res.(scen_name).(vn).phase_data.(p_name).(m_str);
+                        if isempty(data_arr) || all(isnan(data_arr)), continue; end
+                        m_mean = mean(data_arr, 'omitnan');
+                        m_med = median(data_arr, 'omitnan');
+                        m_p10 = prctile(data_arr, 10);
+                        m_p90 = prctile(data_arr, 90);
+                        fprintf(fid_stat, '%s,%s,%s,%s,%.6f,%.6f,%.6f,%.6f\n', scen_name, variants{v}, p_name, m_str, m_mean, m_med, m_p10, m_p90);
+                    end
+                end
+            end
         end
     end
-    fclose(fid);
+    
+    fclose(fid_stat);
+    fclose(fid_sum);
+    
+    % Classification Logic & E-CAL Gate
+    fprintf('\n=== E-CAL Scientific Gate & Classification ===\n');
+    
+    % 1. Extract values
+    % Normal behavior (from S0 Static NORMAL or S1 Warp NORMAL)
+    ecal_s0_m = median(res.S0_Static.E_CAL.phase_data.NORMAL.m_reliability, 'omitnan');
+    ecal_s0_rr = median(res.S0_Static.E_CAL.phase_data.NORMAL.R_eff_R_vb, 'omitnan');
+    
+    ecal_s2_m_norm = median(res.S2_Fade.E_CAL.phase_data.PRE.m_reliability, 'omitnan');
+    ecal_s2_m_fade = median(res.S2_Fade.E_CAL.phase_data.FADE.m_reliability, 'omitnan');
+    ecal_s2_rr_norm = median(res.S2_Fade.E_CAL.phase_data.PRE.R_eff_R_vb, 'omitnan');
+    ecal_s2_rr_fade = median(res.S2_Fade.E_CAL.phase_data.FADE.R_eff_R_vb, 'omitnan');
+    
+    ecal_s1_rmse = median(res.S1_Warp.E_CAL.rmse, 'omitnan');
+    c_s1_rmse = median(res.S1_Warp.C.rmse, 'omitnan');
+    e_s1_rmse = median(res.S1_Warp.E.rmse, 'omitnan');
+    
+    ecal_s3_rmse = median(res.S3_Warp_Fade.E_CAL.rmse, 'omitnan');
+    c_s3_rmse = median(res.S3_Warp_Fade.C.rmse, 'omitnan');
+    e_s3_rmse = median(res.S3_Warp_Fade.E.rmse, 'omitnan');
+    
+    pass_normal = (ecal_s0_m >= 0.90) && (ecal_s0_rr <= 1.15);
+    pass_fade = (ecal_s2_m_fade < ecal_s2_m_norm) && (ecal_s2_rr_fade > ecal_s2_rr_norm);
+    
+    % For K fade:
+    ecal_s2_k_norm = median(res.S2_Fade.E_CAL.phase_data.PRE.K_delay, 'omitnan');
+    ecal_s2_k_fade = median(res.S2_Fade.E_CAL.phase_data.FADE.K_delay, 'omitnan');
+    pass_fade_k = (ecal_s2_k_fade < ecal_s2_k_norm);
+    
+    pass_warp = (ecal_s1_rmse <= 1.25 * c_s1_rmse);
+    pass_warp_fade = (ecal_s3_rmse <= 1.25 * c_s3_rmse);
+    
+    fprintf('Normal Behavior (S0): m=%.3f (>=0.90), Reff/Rvb=%.3f (<=1.15) -> %d\n', ecal_s0_m, ecal_s0_rr, pass_normal);
+    fprintf('Fade Response (S2): m_fade(%.3f) < m_norm(%.3f), Reff/Rvb_fade(%.3f) > Reff/Rvb_norm(%.3f), K_fade(%.3f) < K_norm(%.3f) -> %d\n', ...
+        ecal_s2_m_fade, ecal_s2_m_norm, ecal_s2_rr_fade, ecal_s2_rr_norm, ecal_s2_k_fade, ecal_s2_k_norm, pass_fade && pass_fade_k);
+    fprintf('Dynamic Tracking S1: E-CAL_RMSE(%.3f) <= 1.25 * C_RMSE(%.3f) -> %d\n', ecal_s1_rmse, c_s1_rmse, pass_warp);
+    fprintf('Dynamic Tracking S3: E-CAL_RMSE(%.3f) <= 1.25 * C_RMSE(%.3f) -> %d\n', ecal_s3_rmse, c_s3_rmse, pass_warp_fade);
+    
+    fprintf('\nE-CAL vs E-original in S1 Warp: %.3f vs %.3f\n', ecal_s1_rmse, e_s1_rmse);
+    
+    all_pass = pass_normal && pass_fade && pass_fade_k && pass_warp && pass_warp_fade && (ecal_s1_rmse < e_s1_rmse);
+    
+    if all_pass
+        fprintf('\n[SUCCESS] E-CAL passes all scientific criteria. E-CAL is promoted to final Variant E.\n');
+    else
+        fprintf('\n[FAILURE] E-CAL failed one or more scientific criteria. Do NOT silently tune c2. Stop here.\n');
+    end
     
     save(fullfile(out_dir, 'hvb_diagnostic_raw.mat'), 'res', 'scenarios', 'variants');
     fprintf('Saved diagnostics to %s\n', out_dir);

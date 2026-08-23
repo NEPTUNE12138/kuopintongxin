@@ -45,7 +45,7 @@ function main_WUWNET_Paper_Stress(mode)
         results.(vc).sample_eps_true = [];
     end
     
-    [h_cir, ~] = load_bellhop_cir(ch_file, cfg.fs);
+    [h_cir, ~] = select_bellhop_local_cluster(ch_file, cfg);
     
     for mc = 1:num_mc
         if mod(mc, 10) == 0 || num_mc < 100
@@ -60,7 +60,7 @@ function main_WUWNET_Paper_Stress(mode)
         [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg);
         
         % 2. Apply Channel
-        rx_multi = filter(h_cir, 1, tx_pb);
+        rx_multi = conv(tx_pb, h_cir, 'full');
         
         % 3. Apply Continuous Time-Warping
         t = (0:length(rx_multi)-1) / cfg.fs;

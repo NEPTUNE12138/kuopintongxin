@@ -58,8 +58,8 @@ function cfg = paper2_config(mode)
     cfg.q_freeze_reliability = 0.2; % Freeze Q if m_k < 0.2
     
     % Variant D heuristic penalty parameters
-    cfg.var_D_A = 100;
-    cfg.var_D_b = 5;
+    cfg.var_D_A = 50;
+    cfg.var_D_b = 8;
     
     % Diagnostic Flags (Round 3)
     cfg.hvb.use_heteroscedastic = true;

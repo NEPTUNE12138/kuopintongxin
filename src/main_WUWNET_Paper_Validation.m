@@ -31,7 +31,7 @@ function main_WUWNET_Paper_Validation(mode)
     
     for ch_idx = 1:num_channels
         ch_file = cfg.channels{ch_idx, 1};
-        [h_cir, ~] = load_bellhop_cir(ch_file, cfg.fs);
+        [h_cir, ~] = select_bellhop_local_cluster(ch_file, cfg);
         
         fprintf('Processing Channel %d/%d: %s\n', ch_idx, num_channels, cfg.channels{ch_idx, 2});
         
@@ -52,7 +52,7 @@ function main_WUWNET_Paper_Validation(mode)
                 [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg);
                 
                 % 2. Apply Channel & Noise
-                rx_clean = filter(h_cir, 1, tx_pb);
+                rx_clean = conv(tx_pb, h_cir, 'full');
                 
                 rx_power = norm(rx_clean)^2 / length(rx_clean);
                 noise_power = rx_power / (10^(snr_db / 10));

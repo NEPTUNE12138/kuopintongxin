@@ -65,12 +65,19 @@ function [h_ext, gamma_os, gamma_acf, gamma_hybrid, mask, meta] = extract_cir_hy
     
     % 7. Extract Paths
     mask = abs(g) >= gamma_hybrid;
+    raw_hybrid_mask = mask;
+    
     h_ext = zeros(size(g));
     h_ext(mask) = g(mask);
     
+    fallback_used = false;
+    fallback_index = NaN;
+    
     % Fallback: if threshold is so high that nothing is detected (e.g., pure OS-CFAR on HFM)
     if ~any(mask)
+        fallback_used = true;
         [~, max_idx] = max(abs(g));
+        fallback_index = max_idx;
         h_ext(max_idx) = g(max_idx);
         mask(max_idx) = true;
     end
@@ -83,10 +90,15 @@ function [h_ext, gamma_os, gamma_acf, gamma_hybrid, mask, meta] = extract_cir_hy
     meta.kappa_side = kappa;
     meta.gamma_acf = gamma_acf;
     
-    meta.os_mask = os_mask;
-    meta.hybrid_mask = mask;
-    meta.os_path_count = sum(os_mask);
-    meta.hybrid_path_count = sum(mask);
+    meta.raw_os_mask = os_mask;
+    meta.raw_hybrid_mask = raw_hybrid_mask;
+    meta.final_mask = mask;
+    meta.fallback_used = fallback_used;
+    meta.fallback_index = fallback_index;
+    
+    meta.raw_os_path_count = sum(os_mask);
+    meta.raw_hybrid_path_count = sum(raw_hybrid_mask);
+    meta.final_path_count = sum(mask);
     
     gamma_acf_array = gamma_acf * ones(size(gamma_os));
     meta.acf_floor_active_fraction = mean(gamma_acf_array > gamma_os);

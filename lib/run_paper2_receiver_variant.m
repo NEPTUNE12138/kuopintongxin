@@ -155,6 +155,8 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                         % Re-enable penalty and freeze
                         cfg.hvb.use_heteroscedastic = true;
                         cfg.hvb.use_q_freeze = true;
+                        % Transition rho_prev to relative scale BEFORE computing m_k
+                        rho_prev = min(1, rho_prev / max(meta.rho_ref, eps));
                     end
                     rho_rel = min(1, rho_raw_k / max(meta.rho_ref, eps));
                     rho_k = rho_rel;

@@ -9,13 +9,13 @@ function generate_paper_trm_ablation(mode)
     
     cfg = paper2_config(mode);
     ch_file = cfg.channels{1, 1}; % First channel
-    [h_chan, ~] = load_bellhop_cir(ch_file, cfg.fs);
+    [h_chan, ~] = select_bellhop_local_cluster(ch_file, cfg);
 
 % 1. Transmitted HFM Preamble
 preamble = generate_hfm_preamble(cfg);
 
 % 2. Channel Filtering
-rx_preamble_clean = filter(h_chan, 1, preamble);
+rx_preamble_clean = conv(preamble, h_chan, 'full');
 
 % 3. Controlled Noise (e.g. SNR = 0 dB for clear illustration)
 snr_db = 0;

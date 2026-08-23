@@ -9,9 +9,9 @@ function test_end_to_end_bellhop_smoke()
     [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg);
     
     ch_file = cfg.channels{1, 1};
-    [h, ~] = load_bellhop_cir(ch_file, cfg.fs);
+    [h, ~] = select_bellhop_local_cluster(ch_file, cfg);
     
-    rx_pb = filter(h, 1, tx_pb);
+    rx_pb = conv(tx_pb, h, 'full');
     
     [peak_idx, p_start, pay_start, mf, ~] = coarse_sync_from_preamble(rx_pb, preamble, cfg);
     

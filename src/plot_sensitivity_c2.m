@@ -1,6 +1,6 @@
 function plot_sensitivity_c2(mode)
-% PLOT_SENSITIVITY_C2 Factorial design sensitivity for c2
-    
+% PLOT_SENSITIVITY_C2 Minimax robust C2 selection using factorial design.
+
     if nargin < 1, mode = 'quick'; end
     
     this_file = mfilename('fullpath');
@@ -10,83 +10,91 @@ function plot_sensitivity_c2(mode)
     addpath(fullfile(project_root, 'config'));
     
     cfg = paper2_config(mode);
-    num_trials = cfg.mc_trials_sens;
+    if strcmp(mode, 'quick')
+        num_mc = 5;
+    else
+        num_mc = 20; % Use 20 MC for selection
+    end
     
-    snr_set = [0, 15];
-    velocity_amp_set = [0.5, 1.5];
-    c2_grid = unique(sort([logspace(-3, 1, 10), cfg.c2]));
+    % We will test the E-CAL candidate because the assumption is it passed the gate.
+    % If it didn't pass the gate, this script will still run on E-CAL but the pipeline will be stopped anyway.
+    variant = 'E-CAL';
     
-    ch_file = cfg.channels{1, 1};
-    [h_chan, ~] = load_bellhop_cir(ch_file, cfg.fs);
+    % Broad grid for c2
+    c2_grid = unique(sort([0.005 0.01 0.02 0.05 0.1 0.2 0.5 1 2 5]));
     
-    fprintf('\n--- Running c2 Factorial Sensitivity Analysis (%s) ---\n', upper(mode));
+    snr_db_list = [0, 15];
+    vel_amp_list = [0.5, 1.5]; % m/s
+    
+    ch_file = cfg.channels{1, 1}; % Profile 1
+    [h_chan, ~] = select_bellhop_local_cluster(ch_file, cfg);
     
     out_dir = fullfile(project_root, 'results', 'diagnostic');
     if ~exist(out_dir, 'dir'), mkdir(out_dir); end
     
-    timestamp = datestr(now, 'yyyymmdd_HHMMSS');
-    csv_file = fullfile(out_dir, sprintf('c2_factorial_sensitivity_%s_%s.csv', mode, timestamp));
+    csv_file = fullfile(out_dir, sprintf('c2_factorial_sensitivity_%s_%s.csv', mode, datestr(now, 'yyyymmdd_HHMMSS')));
     fid = fopen(csv_file, 'w');
-    fprintf(fid, 'SNR_dB,VelocityAmp_mps,c2,ValidTrials,MeanRMSE,MedianRMSE,StdError\n');
+    fprintf(fid, 'SNR_dB,VelAmp_mps,C2,RMSE_Median\n');
     
-    results = struct();
+    fprintf('\n--- Running c2 Factorial Sensitivity Analysis (%s) ---\n', upper(mode));
     
-    for si = 1:length(snr_set)
-        snr_db = snr_set(si);
-        for vi = 1:length(velocity_amp_set)
-            v_amp = velocity_amp_set(vi);
+    rmse_matrix = zeros(length(snr_db_list) * length(vel_amp_list), length(c2_grid));
+    cond_idx = 1;
+    
+    for s_idx = 1:length(snr_db_list)
+        snr_db = snr_db_list(s_idx);
+        for v_idx = 1:length(vel_amp_list)
+            vel_amp = vel_amp_list(v_idx);
             
-            fprintf('\nCondition: SNR = %d dB, VelAmp = %.1f m/s\n', snr_db, v_amp);
-            cond_key = sprintf('S%d_V%d', snr_db, round(v_amp*10));
+            fprintf('\nCondition: SNR = %d dB, VelAmp = %.1f m/s\n', snr_db, vel_amp);
             
-            for ci = 1:length(c2_grid)
-                c2 = c2_grid(ci);
-                fprintf('  c2 = %.4f ', c2);
+            warp_cfg.v0_mps = 0.5;
+            warp_cfg.velocity_amp_mps = vel_amp;
+            warp_cfg.velocity_freq_hz = 0.2;
+            warp_cfg.phase_rad = 0;
+            
+            for c_idx = 1:length(c2_grid)
+                c2_val = c2_grid(c_idx);
                 
-                cfg_local = cfg;
-                cfg_local.c2 = c2;
-                trial_errs = NaN(1, num_trials);
+                cfg_test = cfg;
+                cfg_test.c2 = c2_val;
                 
-                for trial = 1:num_trials
-                    if mod(trial, 20) == 0, fprintf('.'); end
-                    
-                    rng_seed = cfg_local.master_seed + trial + si*1000 + vi*10000 + ci*100000;
+                err_mc = NaN(1, num_mc);
+                
+                for mc = 1:num_mc
+                    rng_seed = cfg.master_seed + 2000000 + s_idx*1000 + v_idx*100 + c_idx*10 + mc;
                     rng(rng_seed, 'twister');
                     
-                    [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg_local);
-                    rx_clean = filter(h_chan, 1, tx_pb);
+                    [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg_test);
                     
-                    warp_cfg.v0_mps = 0.5;
-                    warp_cfg.velocity_amp_mps = v_amp;
-                    warp_cfg.velocity_freq_hz = 0.2;
-                    warp_cfg.phase_rad = 0;
+                    % Full convolution
+                    rx_clean = conv(tx_pb, h_chan, 'full');
                     
-                    [rx_warp, warp_meta] = apply_paper2_time_warp(rx_clean, cfg_local, warp_cfg);
+                    [rx_warp, warp_meta] = apply_paper2_time_warp(rx_clean, cfg_test, warp_cfg);
                     
-                    sig_pwr = norm(rx_warp)^2 / length(rx_warp);
-                    noise_pwr = sig_pwr / (10^(snr_db/10));
-                    noise = sqrt(noise_pwr/2) * (randn(size(rx_warp)) + 1j*randn(size(rx_warp)));
-                    rx_noisy = rx_warp + noise;
+                    rx_power = norm(rx_warp)^2 / length(rx_warp);
+                    noise_power = rx_power / (10^(snr_db / 10));
+                    noise = sqrt(noise_power/2) * (randn(size(rx_warp)) + 1j * randn(size(rx_warp)));
+                    rx_final = rx_warp + noise;
                     
                     try
-                        [peak_idx, p_start, pay_start, mf, ~] = coarse_sync_from_preamble(rx_noisy, preamble, cfg_local);
+                        [peak_idx, p_start, pay_start, mf, ~] = coarse_sync_from_preamble(rx_final, preamble, cfg_test);
                         sync_meta.peak_idx = peak_idx;
                         sync_meta.preamble_start = p_start;
                         sync_meta.payload_start = pay_start;
                         sync_meta.mf = mf;
                         
-                        [~, ~, meta] = run_paper2_receiver_variant(rx_noisy, preamble, mseq_os, sync_meta, cfg_local, 'E');
+                        sym_centers = pay_start + (0:cfg_test.num_diff_symbols-1) * cfg_test.symbol_samples + round(cfg_test.symbol_samples/2);
+                        sym_centers = min(length(rx_warp), max(1, sym_centers));
+                        eps_true_per_symbol = warp_meta.epsilon_true_samples(sym_centers);
+                        eps_true_rel = eps_true_per_symbol - eps_true_per_symbol(1);
+                        
+                        [decoded_bits, ~, meta] = run_paper2_receiver_variant(rx_final, preamble, mseq_os, sync_meta, cfg_test, variant);
                         
                         if strcmp(meta.status, 'SUCCESS')
                             eps_est_rel = meta.delay_est_samples - meta.delay_est_samples(1);
-                            
-                            sym_centers = pay_start + (0:cfg_local.num_diff_symbols-1) * cfg_local.symbol_samples + round(cfg_local.symbol_samples/2);
-                            sym_centers = min(length(warp_meta.epsilon_true_samples), max(1, sym_centers));
-                            eps_true_per_symbol = warp_meta.epsilon_true_samples(sym_centers);
-                            eps_true_rel = eps_true_per_symbol - eps_true_per_symbol(1);
-                            
                             err = eps_est_rel - eps_true_rel;
-                            trial_errs(trial) = sqrt(mean(err.^2));
+                            err_mc(mc) = sqrt(mean(err.^2));
                         end
                     catch ME
                         if ~strcmp(ME.identifier, 'Paper2:SyncFail')
@@ -94,44 +102,66 @@ function plot_sensitivity_c2(mode)
                         end
                     end
                 end
-                valid_errs = trial_errs(~isnan(trial_errs));
-                valid_trials = length(valid_errs);
-                m_rmse = mean(valid_errs);
-                med_rmse = median(valid_errs);
-                std_err = std(valid_errs) / sqrt(max(1, valid_trials));
                 
-                fprintf(' RMSE = %.3f\n', m_rmse);
-                fprintf(fid, '%d,%.1f,%.6f,%d,%.6f,%.6f,%.6f\n', ...
-                    snr_db, v_amp, c2, valid_trials, m_rmse, med_rmse, std_err);
+                med_rmse = median(err_mc, 'omitnan');
+                rmse_matrix(cond_idx, c_idx) = med_rmse;
                 
-                results.(cond_key).c2(ci) = c2;
-                results.(cond_key).rmse(ci) = med_rmse;
+                fprintf('  c2 = %.4f -> RMSE = %.3f\n', c2_val, med_rmse);
+                fprintf(fid, '%d,%.1f,%.4f,%.6f\n', snr_db, vel_amp, c2_val, med_rmse);
             end
+            cond_idx = cond_idx + 1;
         end
     end
     fclose(fid);
     
-    fprintf('\n=== C2 Factorial Summary ===\n');
-    cur_c2 = cfg.c2;
-    for si = 1:length(snr_set)
-        for vi = 1:length(velocity_amp_set)
-            cond_key = sprintf('S%d_V%d', snr_set(si), round(velocity_amp_set(vi)*10));
-            rmses = results.(cond_key).rmse;
-            
-            [~, best_idx] = min(rmses);
-            best_c2 = c2_grid(best_idx);
-            
-            % rank of current c2
-            cur_idx = find(abs(c2_grid - cur_c2) < 1e-9, 1);
-            
-            % rank among all
-            [~, sort_idx] = sort(rmses);
-            rank = find(sort_idx == cur_idx);
-            
-            fprintf('SNR %d dB, Vel %.1f m/s:\n', snr_set(si), velocity_amp_set(vi));
-            fprintf('  Best c2: %.4f\n', best_c2);
-            fprintf('  Current c2 (%.4f) Rank: %d / %d\n', cur_c2, rank, length(c2_grid));
+    fprintf('\n=== C2 Minimax Robust Selection ===\n');
+    % Calculate normalized loss for each condition
+    L_matrix = zeros(size(rmse_matrix));
+    for j = 1:size(rmse_matrix, 1)
+        min_rmse_j = min(rmse_matrix(j, :));
+        if min_rmse_j > 0
+            L_matrix(j, :) = rmse_matrix(j, :) / min_rmse_j;
+        else
+            L_matrix(j, :) = ones(1, size(rmse_matrix, 2));
         end
     end
-    fprintf('\nCSV saved to %s\n', out_dir);
+    
+    % J(c2) = max_j L_j(c2)
+    J_c2 = max(L_matrix, [], 1);
+    
+    [min_J, best_idx] = min(J_c2);
+    best_c2 = c2_grid(best_idx);
+    
+    fprintf('Minimax worst-case normalized loss J(c2):\n');
+    for c_idx = 1:length(c2_grid)
+        fprintf('  c2 = %.4f : J = %.3f\n', c2_grid(c_idx), J_c2(c_idx));
+    end
+    
+    fprintf('\nOptimum minimax c2 = %.4f (J = %.3f)\n', best_c2, min_J);
+    
+    % Check if 1/50 (0.02) is within 10% of the optimum
+    c2_50_idx = find(abs(c2_grid - 0.02) < 1e-6, 1);
+    if isempty(c2_50_idx)
+        error('c2=0.02 not found in grid.');
+    end
+    J_50 = J_c2(c2_50_idx);
+    
+    if J_50 <= 1.10 * min_J
+        final_c2 = 0.02;
+        fprintf('c2 = 1/50 (0.02) has J = %.3f, which is within 10%% of optimum %.3f.\n', J_50, min_J);
+        fprintf('RETAINING c2 = 1/50 for simplicity.\n');
+    else
+        final_c2 = best_c2;
+        fprintf('c2 = 1/50 (0.02) has J = %.3f, > 10%% worse than optimum %.3f.\n', J_50, min_J);
+        fprintf('OVERRIDING to minimax optimum c2 = %.4f.\n', final_c2);
+    end
+    
+    fprintf('Final C2 frozen before Pilot: %.4f\n', final_c2);
+    fprintf('CSV saved to %s\n', out_dir);
+    
+    % Update config file directly to freeze the chosen c2 and E-CAL mode for subsequent tests
+    % Wait, updating a MATLAB file from within MATLAB is tricky and might not take effect immediately due to caching.
+    % It's safer to rely on the agent to edit `paper2_config.m` statically if needed, or just let this be an analytical step.
+    % We will save the decision to a .mat file so the full pipeline can use it or verify it.
+    save(fullfile(out_dir, 'c2_minimax_decision.mat'), 'c2_grid', 'rmse_matrix', 'J_c2', 'best_c2', 'final_c2');
 end

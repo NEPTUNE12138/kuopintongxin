@@ -15,9 +15,9 @@ function benchmark_paper2_receivers(mode)
     % Setup dummy signal once
     [tx_pb, ~, preamble, ~, mseq_os, ~] = generate_paper2_tx_signal(cfg);
     ch_file = cfg.channels{1, 1};
-    [h_chan, ~] = load_bellhop_cir(ch_file, cfg.fs);
+    [h_chan, ~] = select_bellhop_local_cluster(ch_file, cfg);
     
-    sig_rx = filter(h_chan, 1, tx_pb);
+    sig_rx = conv(tx_pb, h_chan, 'full');
     sig_rx = sig_rx + 0.1 * (randn(size(sig_rx)) + 1j*randn(size(sig_rx)));
     
     [peak_idx, p_start, pay_start, mf, ~] = coarse_sync_from_preamble(sig_rx, preamble, cfg);
