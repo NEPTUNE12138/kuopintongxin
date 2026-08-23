@@ -84,6 +84,8 @@ for seed = 1:100
     noise_win_start = max(1, Peak_est - 4000);
     noise_win_end   = max(1, Peak_est - 1000);
     if noise_win_end <= noise_win_start, noise_win_start=1; noise_win_end=500; end
+    % find_killer_seed.m
+    % LEGACY/DIAGNOSTIC ONLY — NOT PUBLICATION EVIDENCE
     h_thresh_cfar = mean(abs(Ifft_est(noise_win_start:noise_win_end))) + 3.5 * std(abs(Ifft_est(noise_win_start:noise_win_end)));
     h_cfar = h_raw; h_cfar(abs(h_cfar) < h_thresh_cfar) = 0;
 

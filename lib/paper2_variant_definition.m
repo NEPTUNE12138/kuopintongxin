@@ -40,7 +40,19 @@ function variant_info = paper2_variant_definition(var_char)
             variant_info.uses_hybrid = true;
             variant_info.uses_reliability = true;
             variant_info.uses_vb = true;
+        case 'E-VB-only'
+            variant_info.name = 'E-VB-only: Diagnostic Variant';
+            variant_info.uses_trm = true;
+            variant_info.uses_hybrid = true;
+            variant_info.uses_reliability = true;
+            variant_info.uses_vb = true;
+        case 'E-CAL'
+            variant_info.name = 'E-CAL: Diagnostic Calibrated Variant';
+            variant_info.uses_trm = true;
+            variant_info.uses_hybrid = true;
+            variant_info.uses_reliability = true;
+            variant_info.uses_vb = true;
         otherwise
-            error('Unknown variant ID: %s. Valid options: A, B, C, D, E', var_char);
+            error('Unknown variant ID: %s. Valid options: A, B, C, D, E, E-VB-only, E-CAL', var_char);
     end
 end

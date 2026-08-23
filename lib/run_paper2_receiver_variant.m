@@ -11,6 +11,11 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
         % 1. Configuration and Definitions
         var_def = paper2_variant_definition(variant_char);
         
+        if strcmp(variant_char, 'E-VB-only')
+            cfg.hvb.use_heteroscedastic = false;
+            cfg.hvb.use_q_freeze = false;
+        end
+        
         % 2. CIR Extraction (using same coarse sync peak)
         peak_idx = sync_meta.peak_idx;
         win_start = max(1, peak_idx - 50);
@@ -89,6 +94,19 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
         meta.Lambda = zeros(1, num_syms);
         meta.Q_diag = zeros(2, num_syms);
         
+        is_cal = strcmp(variant_char, 'E-CAL');
+        if is_cal
+            if isfield(cfg, 'reliability') && isfield(cfg.reliability, 'calibration_symbols')
+                Kcal = cfg.reliability.calibration_symbols;
+            else
+                Kcal = 8;
+            end
+            rho_raw_buffer = zeros(1, Kcal);
+            meta.rho_raw = zeros(1, num_syms);
+            meta.rho_ref = NaN;
+            meta.rho_relative = zeros(1, num_syms);
+        end
+        
         % 5. Tracking & Despreading Loop
         for k = 1:num_syms
             % Predict
@@ -118,8 +136,33 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
             
             % Normalized Reliability
             corr_p = sum(seg_P .* conj(mseq_ref));
-            rho_k = abs(corr_p) / sqrt(sum(abs(seg_P).^2) * sum(abs(mseq_ref).^2) + eps);
-            rho_k = min(max(rho_k, 0), 1);
+            rho_raw_k = abs(corr_p) / sqrt(sum(abs(seg_P).^2) * sum(abs(mseq_ref).^2) + eps);
+            rho_raw_k = min(max(rho_raw_k, 0), 1);
+            
+            if is_cal
+                meta.rho_raw(k) = rho_raw_k;
+                if k <= Kcal
+                    rho_raw_buffer(k) = rho_raw_k;
+                    rho_k = rho_raw_k;
+                    meta.rho_relative(k) = rho_k;
+                    
+                    % During calibration: disable penalty and freeze
+                    cfg.hvb.use_heteroscedastic = false;
+                    cfg.hvb.use_q_freeze = false;
+                else
+                    if k == Kcal + 1
+                        meta.rho_ref = median(rho_raw_buffer);
+                        % Re-enable penalty and freeze
+                        cfg.hvb.use_heteroscedastic = true;
+                        cfg.hvb.use_q_freeze = true;
+                    end
+                    rho_rel = min(1, rho_raw_k / max(meta.rho_ref, eps));
+                    rho_k = rho_rel;
+                    meta.rho_relative(k) = rho_k;
+                end
+            else
+                rho_k = rho_raw_k;
+            end
             
             if k == 1
                 rho_prev = rho_k;

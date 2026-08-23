@@ -14,7 +14,7 @@
 | Structural Q (diag truncation) | `hvb_akf_delay_tracker.m` | `test_hvb_tracker.m` | N/A | VERIFIED |
 | Variants A/B/C/D/E | `run_paper2_receiver_variant.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
 | Bellhop profiles (3 configs) | `paper2_config.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
-| MC Count = 3000 | `paper2_config.m` (`paper` mode) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | VERIFIED |
+| MC Count = 3000 | `paper2_config.m` (`paper` mode) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | PARTIAL |
 | BER calculated over total bits | `main_WUWNET_Paper_Validation.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
 | Runtime benchmark | `benchmark_paper2_receivers.m` | `benchmark_paper2_receivers.m` | CLI output | VERIFIED |
 
@@ -28,7 +28,7 @@
 - [x] Phase 8: Results & Documentation
 
 ## Status of Execution
-- `quick` Pipeline (Gate verification): **COMPLETE**
+- `quick` Pipeline (Gate verification & Diagnostics): **COMPLETE**
 - `pilot` Pipeline (200 MC): **PENDING**
 - `paper` Pipeline (3000 MC): **PENDING**
 

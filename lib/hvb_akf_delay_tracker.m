@@ -9,7 +9,11 @@ function [x_post, P_post, alpha_out, beta_out, Q_out, meta] = hvb_akf_delay_trac
     
     % 2. Reliability & Heteroscedastic Penalty
     c2 = cfg.c2;
-    Lambda_k = (1 + c2) / (m_k^2 + c2);
+    if isfield(cfg, 'hvb') && isfield(cfg.hvb, 'use_heteroscedastic') && ~cfg.hvb.use_heteroscedastic
+        Lambda_k = 1;
+    else
+        Lambda_k = (1 + c2) / (m_k^2 + c2);
+    end
     
     % 3. VB Initialization
     alpha0 = 0.95 * alpha_prev;
@@ -38,7 +42,13 @@ function [x_post, P_post, alpha_out, beta_out, Q_out, meta] = hvb_akf_delay_trac
     
     % 5. Q Adaptation (Q-Freeze Mechanism)
     Q_out = Q_prev;
-    if m_k >= cfg.q_freeze_reliability
+    
+    do_freeze = false;
+    if isfield(cfg, 'hvb') && isfield(cfg.hvb, 'use_q_freeze') && cfg.hvb.use_q_freeze
+        do_freeze = (m_k < cfg.q_freeze_reliability);
+    end
+    
+    if ~do_freeze
         innovation = z_k - H * x_pred;
         C_k = innovation^2;
         Q_est_full = K_gain * C_k * K_gain';

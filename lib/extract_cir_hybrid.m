@@ -82,4 +82,12 @@ function [h_ext, gamma_os, gamma_acf, gamma_hybrid, mask, meta] = extract_cir_hy
     meta.g_peak = g_peak;
     meta.kappa_side = kappa;
     meta.gamma_acf = gamma_acf;
+    
+    meta.os_mask = os_mask;
+    meta.hybrid_mask = mask;
+    meta.os_path_count = sum(os_mask);
+    meta.hybrid_path_count = sum(mask);
+    
+    gamma_acf_array = gamma_acf * ones(size(gamma_os));
+    meta.acf_floor_active_fraction = mean(gamma_acf_array > gamma_os);
 end

@@ -28,6 +28,9 @@ function run_paper2_full_pipeline(mode)
         test_delay_tracking_ground_truth;
         test_ber_failure_statistics;
         test_variant_D_R_stability;
+        test_reliability_calibration;
+        test_time_warp_helper;
+        test_trm_true_cir_metrics;
         fprintf('\nALL GATE TESTS PASSED!\n');
     catch ME
         fprintf('\n[!] GATE TEST FAILED: %s\n', ME.message);
@@ -43,20 +46,31 @@ function run_paper2_full_pipeline(mode)
     % Stress Test
     main_WUWNET_Paper_Stress(mode);
     
+    % --- Round 3 Diagnostics ---
+    fprintf('\n--- Round 3 Diagnostics ---\n');
+    fprintf('Running HVB Diagnostic...\n');
+    diagnose_hvb_failure(mode);
+    
+    fprintf('Running TRM Diagnostic...\n');
+    diagnose_trm_contribution(mode);
+    
+    fprintf('Running SNR Boundary Scan...\n');
+    quick_snr_boundary_scan(mode);
+    
     % 3. Ancillary Scripts and Plots
     fprintf('\n--- Ancillary Scripts and Plots ---\n');
     
     fprintf('Running TRM Ablation...\n');
-    generate_paper_trm_ablation;
+    generate_paper_trm_ablation(mode);
     
     fprintf('Running C2 Sensitivity...\n');
-    plot_sensitivity_c2;
+    plot_sensitivity_c2(mode);
     
     fprintf('Running Runtime Benchmark...\n');
-    benchmark_paper2_receivers;
+    benchmark_paper2_receivers(mode);
     
     fprintf('Exporting Parameters...\n');
-    export_paper_parameters;
+    export_paper_parameters(mode);
     
     fprintf('Plotting all Channels BER...\n');
     plot_all_3_channels_ber(mode);

@@ -1,11 +1,15 @@
-% generate_paper_trm_ablation.m
-% Generates the TRM Hybrid CIR extraction ablation figure using genuine data.
-addpath('../lib');
-addpath('../config');
-
-cfg = paper2_config('paper');
-ch_file = cfg.channels{1, 1}; % First channel
-[h_chan, ~] = load_bellhop_cir(ch_file, cfg.fs);
+function generate_paper_trm_ablation(mode)
+    if nargin < 1, mode = 'quick'; end
+    
+    this_file = mfilename('fullpath');
+    src_dir = fileparts(this_file);
+    project_root = fileparts(src_dir);
+    addpath(fullfile(project_root, 'lib'));
+    addpath(fullfile(project_root, 'config'));
+    
+    cfg = paper2_config(mode);
+    ch_file = cfg.channels{1, 1}; % First channel
+    [h_chan, ~] = load_bellhop_cir(ch_file, cfg.fs);
 
 % 1. Transmitted HFM Preamble
 preamble = generate_hfm_preamble(cfg);
@@ -66,3 +70,4 @@ grid on;
 if ~exist('results_plots', 'dir'), mkdir('results_plots'); end
 exportgraphics(fig, fullfile('results_plots', 'Fig_TRM_Ablation.png'), 'Resolution', 300);
 fprintf('TRM Ablation plot saved to results_plots\n');
+end
