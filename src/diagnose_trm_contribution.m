@@ -140,18 +140,25 @@ function diagnose_trm_contribution(mode)
                 
                 % Metrics using TRUE CIR and detected q
                 % Do not use fallback q! Use raw mask q.
-                q_os = zeros(size(g_win)); q_os(meta_os.raw_os_mask) = g_win(meta_os.raw_os_mask);
-                q_os = conj(fliplr(q_os));
-                if norm(q_os) > 0, q_os = q_os / norm(q_os); end
-                h_eq_os = conv(h_true, q_os);
+                if sum(meta_os.raw_os_mask) == 0
+                    rms_os(mc) = NaN; peak_os(mc) = NaN; pslr_os(mc) = NaN;
+                else
+                    q_os = zeros(size(g_win)); q_os(meta_os.raw_os_mask) = g_win(meta_os.raw_os_mask);
+                    q_os = conj(fliplr(q_os));
+                    q_os = q_os / norm(q_os);
+                    h_eq_os = conv(h_true, q_os);
+                    [rms_os(mc), peak_os(mc), pslr_os(mc)] = compute_focusing_metrics(h_eq_os, cfg);
+                end
                 
-                q_hy = zeros(size(g_win)); q_hy(meta_hyb.raw_hybrid_mask) = g_win(meta_hyb.raw_hybrid_mask);
-                q_hy = conj(fliplr(q_hy));
-                if norm(q_hy) > 0, q_hy = q_hy / norm(q_hy); end
-                h_eq_hy = conv(h_true, q_hy);
-                
-                [rms_os(mc), peak_os(mc), pslr_os(mc)] = compute_focusing_metrics(h_eq_os, cfg);
-                [rms_hy(mc), peak_hy(mc), pslr_hy(mc)] = compute_focusing_metrics(h_eq_hy, cfg);
+                if sum(meta_hyb.raw_hybrid_mask) == 0
+                    rms_hy(mc) = NaN; peak_hy(mc) = NaN; pslr_hy(mc) = NaN;
+                else
+                    q_hy = zeros(size(g_win)); q_hy(meta_hyb.raw_hybrid_mask) = g_win(meta_hyb.raw_hybrid_mask);
+                    q_hy = conj(fliplr(q_hy));
+                    q_hy = q_hy / norm(q_hy);
+                    h_eq_hy = conv(h_true, q_hy);
+                    [rms_hy(mc), peak_hy(mc), pslr_hy(mc)] = compute_focusing_metrics(h_eq_hy, cfg);
+                end
             end
             
             m_os_rec = median(os_rec); m_hy_rec = median(hy_rec);

@@ -28,9 +28,15 @@
 - [x] Phase 8: Results & Documentation
 
 ## Status of Execution
-  - [x] Round 4 Algorithm Freeze (Pre-Pilot Diagnostics): **COMPLETE**
-- `pilot` Pipeline (200 MC): **PENDING**
-- `paper` Pipeline (3000 MC): **PENDING**
+- Round-4 Algorithm Freeze: PARTIAL
+- Full Quick Pipeline: FAILED / NOT COMPLETE
+- E-CAL final method: UNDER FALSIFICATION
+- c2 final: NOT FROZEN
+- OS-CFAR: UNDER CALIBRATION
+- Hybrid TRM primary contribution: NOT VERIFIED
+- Bellhop local-cluster model: VERIFIED
+- Pilot: NOT RUN
+- Paper: NOT RUNPipeline (3000 MC): **PENDING**
 
 ## Unimplemented / Rejected Claims
 - 2D SNR-Delay Dynamic Routing (Explicitly removed)

@@ -1,14 +1,17 @@
-function diagnose_hvb_failure(mode)
+function decision = diagnose_hvb_failure(mode)
 % DIAGNOSE_HVB_FAILURE Scientific diagnostic for Variant E dynamic tracking failure.
 
     if nargin < 1, mode = 'quick'; end
     
+    this_file = mfilename('fullpath');
+    src_dir = fileparts(this_file);
+    project_root = fileparts(src_dir);
+    
     cfg = paper2_config(mode);
-    if strcmp(mode, 'quick')
-        num_mc = 10; % reduced for quick
-    else
-        num_mc = 50; % 50 per scenario for full diagnostics
-    end
+    num_mc = 50; % Enforce exactly 50 MC per scenario for falsification
+    
+    cfg.c2 = 1/50;
+    cfg.reliability.calibration_symbols = 8;
     
     ch_file = cfg.channels{1, 1}; % Profile P1
     [h_chan, ~] = select_bellhop_local_cluster(ch_file, cfg);
@@ -19,7 +22,7 @@ function diagnose_hvb_failure(mode)
     fprintf('\n=== Running HVB Diagnostic ===\n');
     fprintf('MC Trials/Scenario: %d\n', num_mc);
     
-    out_dir = fullfile('results', 'diagnostic');
+    out_dir = fullfile(project_root, 'results', 'diagnostic');
     if ~exist(out_dir, 'dir'), mkdir(out_dir); end
     
     res = struct();
@@ -269,13 +272,20 @@ function diagnose_hvb_failure(mode)
     
     fprintf('\nE-CAL vs E-original in S1 Warp: %.3f vs %.3f\n', ecal_s1_rmse, e_s1_rmse);
     
+    fprintf('\nRMSE ratios E-CAL/C:\n');
+    fprintf('  S1 (Warp): %.3f\n', ecal_s1_rmse / c_s1_rmse);
+    fprintf('  S3 (Warp+Fade): %.3f\n', ecal_s3_rmse / c_s3_rmse);
+    
     all_pass = pass_normal && pass_fade && pass_fade_k && pass_warp && pass_warp_fade && (ecal_s1_rmse < e_s1_rmse);
     
     if all_pass
-        fprintf('\n[SUCCESS] E-CAL passes all scientific criteria. E-CAL is promoted to final Variant E.\n');
+        fprintf('\nECAL_MECHANISM_GATE_PASS\n');
     else
-        fprintf('\n[FAILURE] E-CAL failed one or more scientific criteria. Do NOT silently tune c2. Stop here.\n');
+        fprintf('\nECAL_NOT_ACCEPTED_FOR_FINAL_METHOD\n');
     end
+    
+    decision = struct();
+    decision.passed = all_pass;
     
     save(fullfile(out_dir, 'hvb_diagnostic_raw.mat'), 'res', 'scenarios', 'variants');
     fprintf('Saved diagnostics to %s\n', out_dir);

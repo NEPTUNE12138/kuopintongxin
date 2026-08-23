@@ -43,6 +43,9 @@ function cfg = paper2_config(mode)
         fullfile(cfg.bellhop_dir, 'channel_15m_20km_3467m.mat'), 'Profile P2: Tx15m / 20km / Rx3467m';
         fullfile(cfg.bellhop_dir, 'channel_100m_45km_110m.mat'), 'Profile P3: Tx100m / 45km / Rx110m'
     }; 
+    
+    cfg.bellhop_cluster_gap_s = 0.05;
+    cfg.channel_model = 'bellhop_local_cluster';
 
     %% Algorithm Hyperparameters
     % TRM / OS-CFAR
@@ -70,6 +73,10 @@ function cfg = paper2_config(mode)
     
     % Early-Late Tracking window size
     cfg.W_size = 5; 
+    
+    % Frozen state initialization
+    cfg.final_tracker_variant = 'UNRESOLVED';
+    cfg.c2_frozen = false;
     
     %% Simulation & Monte Carlo Modes
     cfg.master_seed = 20260823;

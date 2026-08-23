@@ -37,6 +37,7 @@ function main_WUWNET_Paper_Stress(mode)
         results.(vc).rmse_post = NaN(1, num_mc);
         results.(vc).mean_K_fade = NaN(1, num_mc);
         results.(vc).mean_Reff_fade = NaN(1, num_mc);
+        results.(vc).mean_Reff_Rvb_fade = NaN(1, num_mc);
         results.(vc).ber = NaN(1, num_mc);
         results.(vc).valid = false(1, num_mc);
         
@@ -65,22 +66,15 @@ function main_WUWNET_Paper_Stress(mode)
         % 3. Apply Continuous Time-Warping
         t = (0:length(rx_multi)-1) / cfg.fs;
         
-        v0 = 0.5; % 0.5 m/s mean
-        A_v = 1.5; % 1.5 m/s amplitude
-        f_v = 0.2; % 0.2 Hz
-        c_sound = 1500;
+        warp_cfg.v0_mps = 0.5;
+        warp_cfg.velocity_amp_mps = 1.5;
+        warp_cfg.velocity_freq_hz = 0.2;
+        warp_cfg.phase_rad = 0;
         
-        alpha = 1 + (v0 + A_v * sin(2 * pi * f_v * t)) / c_sound;
-        t_src = cumtrapz(t, alpha);
-        t_src = t_src - t_src(1);
-        
-        rx_warp = interp1(t, rx_multi, t_src, 'linear', 0);
-        
-        % Calculate Ground Truth Delay
-        epsilon_true_samples = (t - t_src) * cfg.fs;
+        [rx_warp, warp_meta] = apply_paper2_time_warp(rx_multi, cfg, warp_cfg);
+        epsilon_true_samples = warp_meta.epsilon_true_samples;
         
         % 4. Add Deep Fades (Amplitude Modulation)
-        fade_mask = ones(size(rx_warp));
         packet_duration = length(rx_warp) / cfg.fs;
         fade_center = packet_duration / 2;
         fade_width = 0.1; % 100ms fade
@@ -109,6 +103,15 @@ function main_WUWNET_Paper_Stress(mode)
         eps_true_per_symbol = epsilon_true_samples(sym_centers);
         eps_true_rel = eps_true_per_symbol - eps_true_per_symbol(1);
         
+        fade_env_at_centers = fade_env(sym_centers);
+        fmask = fade_env_at_centers < 0.5;
+        first_fade = find(fmask, 1, 'first');
+        last_fade = find(fmask, 1, 'last');
+        
+        pre_idx = 1:(first_fade-1);
+        fade_idx = first_fade:last_fade;
+        post_idx = (last_fade+1):cfg.num_diff_symbols;
+        
         % 7. Run Trackers
         for v = 1:num_variants
             vc = variants{v};
@@ -124,11 +127,15 @@ function main_WUWNET_Paper_Stress(mode)
                     eps_est_rel = meta.delay_est_samples - meta.delay_est_samples(1);
                     err = eps_est_rel - eps_true_rel;
                     
-                    results.(vc).rmse_pre(mc) = sqrt(mean(err(z1_start:z1_end).^2));
-                    results.(vc).rmse_fade(mc) = sqrt(mean(err(z2_start:z2_end).^2));
-                    results.(vc).rmse_post(mc) = sqrt(mean(err(z3_start:z3_end).^2));
-                    results.(vc).mean_K_fade(mc) = mean(meta.K_gain(1, z2_start:z2_end));
-                    results.(vc).mean_Reff_fade(mc) = mean(meta.R_eff(z2_start:z2_end));
+                    results.(vc).rmse_pre(mc) = sqrt(mean(err(pre_idx).^2));
+                    results.(vc).rmse_fade(mc) = sqrt(mean(err(fade_idx).^2));
+                    results.(vc).rmse_post(mc) = sqrt(mean(err(post_idx).^2));
+                    results.(vc).mean_K_fade(mc) = mean(meta.K_gain(1, fade_idx));
+                    results.(vc).mean_Reff_fade(mc) = mean(meta.R_eff(fade_idx));
+                    
+                    if isfield(meta, 'R_vb')
+                        results.(vc).mean_Reff_Rvb_fade(mc) = mean(meta.R_eff(fade_idx) ./ max(meta.R_vb(fade_idx), eps));
+                    end
                     
                     % Save one valid sample
                     results.(vc).sample_meta = meta;
@@ -147,7 +154,7 @@ function main_WUWNET_Paper_Stress(mode)
     timestamp = datestr(now, 'yyyymmdd_HHMMSS');
     csv_file = fullfile(out_dir, sprintf('paper2_stress_summary_%s.csv', timestamp));
     fid = fopen(csv_file, 'w');
-    fprintf(fid, 'Variant,Valid_Rate,Mean_BER,RMSE_Pre,RMSE_Fade,RMSE_Post,Mean_K_Fade,Mean_Reff_Fade\n');
+    fprintf(fid, 'Variant,Valid_Rate,Mean_BER,RMSE_Pre,RMSE_Fade,RMSE_Post,Mean_K_Fade,Mean_Reff_Fade,Mean_Reff_Rvb_Fade\n');
     
     for v = 1:num_variants
         vc = variants{v};
@@ -161,6 +168,7 @@ function main_WUWNET_Paper_Stress(mode)
         m_post = mean(results.(vc).rmse_post(valid_mask));
         m_k = mean(results.(vc).mean_K_fade(valid_mask));
         m_reff = mean(results.(vc).mean_Reff_fade(valid_mask));
+        m_rr = mean(results.(vc).mean_Reff_Rvb_fade(valid_mask));
         
         fprintf('Variant %s:\n', vc);
         fprintf('  Valid Trials: %d/%d (%.1f%%)\n', valid_count, num_mc, 100*valid_rate);
@@ -169,8 +177,8 @@ function main_WUWNET_Paper_Stress(mode)
             fprintf('  RMSE Pre/Fade/Post: %.4f / %.4f / %.4f samples\n', m_pre, m_fade, m_post);
         end
         
-        fprintf(fid, '%s,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
-            vc, valid_rate, m_ber, m_pre, m_fade, m_post, m_k, m_reff);
+        fprintf(fid, '%s,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
+            vc, valid_rate, m_ber, m_pre, m_fade, m_post, m_k, m_reff, m_rr);
     end
     fclose(fid);
     

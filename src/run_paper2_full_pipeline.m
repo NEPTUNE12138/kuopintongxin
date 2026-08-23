@@ -55,10 +55,18 @@ function run_paper2_full_pipeline(mode)
     fprintf('\n--- Pre-Pilot Diagnostics (Round 4) ---\n');
     
     fprintf('Running CFAR Detection Calibration...\n');
-    diagnose_cfar_detection(mode);
+    cfar_decision = diagnose_cfar_detection(mode);
+    if ~cfar_decision.passed
+        fprintf('[!] Setting TRM_PRIMARY_CONTRIBUTION = false\n');
+    end
     
     fprintf('Running HVB Diagnostic & E-CAL Gate...\n');
-    diagnose_hvb_failure(mode);
+    ecal_decision = diagnose_hvb_failure(mode);
+    
+    if ~ecal_decision.passed
+        fprintf('\n[STOP] E-CAL failed scientific gate. Halting algorithm freeze pipeline.\n');
+        return;
+    end
     
     fprintf('Running C2 Minimax Selection...\n');
     plot_sensitivity_c2(mode);

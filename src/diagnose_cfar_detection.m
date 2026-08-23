@@ -1,4 +1,4 @@
-function diagnose_cfar_detection(mode)
+function decision = diagnose_cfar_detection(mode)
 % DIAGNOSE_CFAR_DETECTION Calibrates OS-CFAR parameters for HFM preamble TRM.
 % Uses the selected TRUE Bellhop local cluster.
 
@@ -11,11 +11,7 @@ function diagnose_cfar_detection(mode)
     addpath(fullfile(project_root, 'config'));
     
     cfg = paper2_config(mode);
-    if strcmp(mode, 'quick')
-        num_mc = 5;
-    else
-        num_mc = 30;
-    end
+    num_mc = 30; % Enforce 30 MC for falsification
     
     out_dir = fullfile(project_root, 'results', 'diagnostic');
     if ~exist(out_dir, 'dir'), mkdir(out_dir); end
@@ -169,12 +165,20 @@ function diagnose_cfar_detection(mode)
         end
     end
     
+    decision = struct();
     if isnan(best_pfa)
         fprintf('[!] OS-CFAR unsuitable: No configuration reaches 0.90 recall at 0 dB.\n');
-        fprintf('[!] CFAR_EXTRACTION_FAILURE. Stop TRM promotion.\n');
+        fprintf('CFAR_EXTRACTION_FAILURE\n');
+        fprintf('HYBRID_TRM_NOT_SUPPORTED_AS_PRIMARY_CONTRIBUTION\n');
+        decision.passed = false;
     else
         fprintf('[SUCCESS] Best OS-CFAR Config: Pfa = %e, Order = %.2f (Avg FP = %.1f)\n', best_pfa, best_order, best_fp);
+        decision.passed = true;
     end
+    
+    decision.best_pfa = best_pfa;
+    decision.best_order = best_order;
+    decision.best_fp = best_fp;
     
     % Save decision
     save(fullfile(out_dir, 'cfar_decision.mat'), 'best_pfa', 'best_order', 'best_fp');

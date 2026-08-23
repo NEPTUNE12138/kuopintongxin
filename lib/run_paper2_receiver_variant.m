@@ -19,7 +19,7 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
         % 2. CIR Extraction (using same coarse sync peak)
         peak_idx = sync_meta.peak_idx;
         win_start = max(1, peak_idx - 50);
-        win_end   = min(length(sig_pb), peak_idx + 200);
+        win_end   = min(length(sync_meta.mf), peak_idx + 200);
         
         g_win = sync_meta.mf(win_start:win_end);
         
@@ -94,7 +94,8 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
         meta.Lambda = zeros(1, num_syms);
         meta.Q_diag = zeros(2, num_syms);
         
-        is_cal = strcmp(variant_char, 'E-CAL');
+        is_cal = strcmp(variant_char, 'E-CAL') || ...
+                 (strcmp(variant_char, 'E') && isfield(cfg, 'final_tracker_variant') && strcmp(cfg.final_tracker_variant, 'E-CAL'));
         if is_cal
             if isfield(cfg, 'reliability') && isfield(cfg.reliability, 'calibration_symbols')
                 Kcal = cfg.reliability.calibration_symbols;
