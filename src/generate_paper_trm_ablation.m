@@ -26,9 +26,7 @@ rx_preamble = rx_preamble_clean + noise;
 % 4. Matched Filtering
 [peak_idx, ~, ~, mf, ~] = coarse_sync_from_preamble(rx_preamble, preamble, cfg);
 
-win_start = max(1, peak_idx - 50);
-win_end   = min(length(mf), peak_idx + 200);
-g_win = mf(win_start:win_end);
+[g_win, win_start, win_end] = extract_mf_local_window(mf, peak_idx, 50, 200);
 
 % 5. Hybrid Extraction
 [h_ext, gamma_os, gamma_acf, gamma_hybrid, mask, meta] = extract_cir_hybrid(g_win, preamble, cfg);

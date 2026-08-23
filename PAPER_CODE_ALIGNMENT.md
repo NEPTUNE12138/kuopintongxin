@@ -28,15 +28,15 @@
 - [x] Phase 8: Results & Documentation
 
 ## Status of Execution
-- Round-4 Algorithm Freeze: PARTIAL
+- Round-4 Algorithm Freeze: HALTED
 - Full Quick Pipeline: FAILED / NOT COMPLETE
-- E-CAL final method: UNDER FALSIFICATION
+- E-CAL: REJECTED AS FINAL BY 50-MC PREDECLARED GATE
+- Final tracker: UNRESOLVED
 - c2 final: NOT FROZEN
-- OS-CFAR: UNDER CALIBRATION
-- Hybrid TRM primary contribution: NOT VERIFIED
+- TRM primary contribution: pending one corrected CFAR rerun
 - Bellhop local-cluster model: VERIFIED
-- Pilot: NOT RUN
-- Paper: NOT RUNPipeline (3000 MC): **PENDING**
+- Pilot: BLOCKED / NOT RUN
+- Paper: NOT RUN
 
 ## Unimplemented / Rejected Claims
 - 2D SNR-Delay Dynamic Routing (Explicitly removed)

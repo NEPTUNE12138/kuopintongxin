@@ -4,13 +4,18 @@ function decision = diagnose_cfar_detection(mode)
 
     if nargin < 1, mode = 'quick'; end
     
+    config_mode = mode;
+    if strcmp(mode, 'freeze')
+        config_mode = 'quick';
+    end
+    
     this_file = mfilename('fullpath');
     src_dir = fileparts(this_file);
     project_root = fileparts(src_dir);
     addpath(fullfile(project_root, 'lib'));
     addpath(fullfile(project_root, 'config'));
     
-    cfg = paper2_config(mode);
+    cfg = paper2_config(config_mode);
     num_mc = 30; % Enforce 30 MC for falsification
     
     out_dir = fullfile(project_root, 'results', 'diagnostic');
@@ -72,9 +77,7 @@ function decision = diagnose_cfar_detection(mode)
                         g_raw = conv(rx_noisy, conj(fliplr(preamble)));
                         
                         [~, peak_idx] = max(abs(g_raw));
-                        win_start = max(1, peak_idx - 50);
-                        win_end   = min(length(rx_noisy), peak_idx + 200);
-                        g_win = g_raw(win_start:win_end);
+                        [g_win, win_start, win_end] = extract_mf_local_window(g_raw, peak_idx, 50, 200);
                         
                         % The true peak of path p occurs at length(preamble) + true_tap_samples(p) - 1
                         % Relative to g_win:

@@ -36,64 +36,34 @@ function run_paper2_full_pipeline(mode)
         test_bellhop_cluster_selection;
         test_channel_full_convolution;
         test_cfar_raw_detection_no_fallback;
+        test_hvb_q_modes;
+        test_hvb_innovation_telemetry;
         fprintf('\nALL GATE TESTS PASSED!\n');
     catch ME
         fprintf('\n[!] GATE TEST FAILED: %s\n', ME.message);
         rethrow(ME);
     end
     
-    % 2. Execution Phase
-    fprintf('\n--- Execution Phase ---\n');
+    % 2. Final-Method Diagnostic (Q Attribution)
+    fprintf('\n--- Final-Method Diagnostic (Round 5) ---\n');
+    fprintf('Running HVB Q-Attribution Diagnostic...\n');
+    diagnose_hvb_q_attribution(mode);
     
-    % BER Validation
-    main_WUWNET_Paper_Validation(mode);
-    
-    % Stress Test
-    main_WUWNET_Paper_Stress(mode);
-    
-    % --- Round 4 Algorithm Freeze Diagnostics ---
-    fprintf('\n--- Pre-Pilot Diagnostics (Round 4) ---\n');
-    
+    % 3. CFAR Final Falsification
+    fprintf('\n--- CFAR Final Falsification ---\n');
     fprintf('Running CFAR Detection Calibration...\n');
-    cfar_decision = diagnose_cfar_detection(mode);
+    cfar_decision = diagnose_cfar_detection('freeze');
     if ~cfar_decision.passed
+        fprintf('[!] CFAR_EXTRACTION_FAILURE\n');
+        fprintf('[!] HYBRID_TRM_NOT_SUPPORTED_AS_PRIMARY_CONTRIBUTION\n');
         fprintf('[!] Setting TRM_PRIMARY_CONTRIBUTION = false\n');
     end
     
-    fprintf('Running HVB Diagnostic & E-CAL Gate...\n');
-    ecal_decision = diagnose_hvb_failure(mode);
+    % 4. Execution Pipeline Control
+    % Because E-CAL failed the predefined Round 4/5 gates, we MUST halt here.
+    fprintf('\n[STOP] Pipeline halted due to E-CAL historical failure.\n');
+    fprintf('FINAL_TRACKER_UNRESOLVED\n');
+    fprintf('PILOT_BLOCKED\n');
     
-    if ~ecal_decision.passed
-        fprintf('\n[STOP] E-CAL failed scientific gate. Halting algorithm freeze pipeline.\n');
-        return;
-    end
-    
-    fprintf('Running C2 Minimax Selection...\n');
-    plot_sensitivity_c2(mode);
-    
-    fprintf('Running TRM Diagnostic...\n');
-    diagnose_trm_contribution(mode);
-    
-    fprintf('Running Final SNR Boundary Scan...\n');
-    quick_snr_boundary_scan(mode);
-    
-    % 3. Ancillary Scripts and Plots
-    fprintf('\n--- Ancillary Scripts and Plots ---\n');
-    
-    fprintf('Running TRM Ablation...\n');
-    generate_paper_trm_ablation(mode);
-    
-    fprintf('Running Runtime Benchmark...\n');
-    benchmark_paper2_receivers(mode);
-    
-    fprintf('Exporting Parameters...\n');
-    export_paper_parameters(mode);
-    
-    fprintf('Plotting all Channels BER...\n');
-    plot_all_3_channels_ber(mode);
-    
-    fprintf('Extracting Metrics...\n');
-    extract_paper_metrics(mode);
-    
-    fprintf('\n=== Pipeline Completed Successfully ===\n');
+    return;
 end

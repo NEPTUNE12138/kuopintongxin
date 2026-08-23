@@ -18,10 +18,7 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
         
         % 2. CIR Extraction (using same coarse sync peak)
         peak_idx = sync_meta.peak_idx;
-        win_start = max(1, peak_idx - 50);
-        win_end   = min(length(sync_meta.mf), peak_idx + 200);
-        
-        g_win = sync_meta.mf(win_start:win_end);
+        [g_win, win_start, win_end] = extract_mf_local_window(sync_meta.mf, peak_idx, 50, 200);
         
         if ~var_def.uses_trm
             q_filter = 1;
@@ -93,6 +90,17 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
         meta.m_reliability = zeros(1, num_syms);
         meta.Lambda = zeros(1, num_syms);
         meta.Q_diag = zeros(2, num_syms);
+        
+        meta.innovation = zeros(1, num_syms);
+        meta.abs_innovation = zeros(1, num_syms);
+        meta.NIS = zeros(1, num_syms);
+        meta.directional_consistency = zeros(1, num_syms);
+        meta.coherent_fraction = zeros(1, num_syms);
+        
+        W_innov = 5;
+        innov_hist = zeros(1, W_innov);
+        innov_hist_idx = 1;
+        innov_count = 0;
         
         is_cal = strcmp(variant_char, 'E-CAL') || ...
                  (strcmp(variant_char, 'E') && isfield(cfg, 'final_tracker_variant') && strcmp(cfg.final_tracker_variant, 'E-CAL'));
@@ -188,6 +196,27 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                 meta.K_gain(:, k) = tracker_meta.K_gain;
                 meta.Lambda(k) = tracker_meta.Lambda_k;
                 meta.Q_diag(:, k) = tracker_meta.Q_diag;
+                
+                meta.innovation(k) = tracker_meta.innovation;
+                meta.abs_innovation(k) = abs(tracker_meta.innovation);
+                meta.NIS(k) = tracker_meta.NIS;
+                
+                innov_hist(innov_hist_idx) = tracker_meta.innovation;
+                innov_hist_idx = mod(innov_hist_idx, W_innov) + 1;
+                innov_count = min(innov_count + 1, W_innov);
+                
+                if innov_count == W_innov
+                    d_k = abs(sum(innov_hist)) / (sum(abs(innov_hist)) + eps);
+                    mu_nu = mean(innov_hist);
+                    var_nu = var(innov_hist, 1); % biased variance as per specification
+                    coh_frac = mu_nu^2 / (mu_nu^2 + var_nu + eps);
+                    
+                    meta.directional_consistency(k) = d_k;
+                    meta.coherent_fraction(k) = coh_frac;
+                else
+                    meta.directional_consistency(k) = NaN;
+                    meta.coherent_fraction(k) = NaN;
+                end
             else
                 H_mat = [1 0];
                 innov_buffer(innov_idx) = z_res;
@@ -222,6 +251,29 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                 meta.K_gain(:, k) = K_gain;
                 meta.Lambda(k) = R_eff / max(R_iae, eps);
                 meta.Q_diag(:, k) = diag(Q_k);
+                
+                innov_k = z_abs - H_mat * x_pre;
+                meta.innovation(k) = innov_k;
+                meta.abs_innovation(k) = abs(innov_k);
+                S_k = H_mat * P_pre * H_mat' + R_eff;
+                meta.NIS(k) = innov_k^2 / max(S_k, eps);
+                
+                innov_hist(innov_hist_idx) = innov_k;
+                innov_hist_idx = mod(innov_hist_idx, W_innov) + 1;
+                innov_count = min(innov_count + 1, W_innov);
+                
+                if innov_count == W_innov
+                    d_k = abs(sum(innov_hist)) / (sum(abs(innov_hist)) + eps);
+                    mu_nu = mean(innov_hist);
+                    var_nu = var(innov_hist, 1);
+                    coh_frac = mu_nu^2 / (mu_nu^2 + var_nu + eps);
+                    
+                    meta.directional_consistency(k) = d_k;
+                    meta.coherent_fraction(k) = coh_frac;
+                else
+                    meta.directional_consistency(k) = NaN;
+                    meta.coherent_fraction(k) = NaN;
+                end
             end
             
             meta.delay_est_samples(k) = x_k(1);

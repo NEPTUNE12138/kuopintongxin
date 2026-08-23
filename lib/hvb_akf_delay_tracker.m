@@ -48,14 +48,28 @@ function [x_post, P_post, alpha_out, beta_out, Q_out, meta] = hvb_akf_delay_trac
         do_freeze = (m_k < cfg.q_freeze_reliability);
     end
     
+    q_mode = 'both';
+    if isfield(cfg, 'hvb') && isfield(cfg.hvb, 'q_adaptation_mode')
+        q_mode = cfg.hvb.q_adaptation_mode;
+    end
+    
     if ~do_freeze
         innovation = z_k - H * x_pred;
         C_k = innovation^2;
         Q_est_full = K_gain * C_k * K_gain';
         Q_est_diag = diag(diag(Q_est_full));
         
-        Q_out(1,1) = max(1e-6, 0.9 * Q_prev(1,1) + 0.1 * Q_est_diag(1,1));
-        Q_out(2,2) = max(1e-6, 0.9 * Q_prev(2,2) + 0.1 * Q_est_diag(2,2));
+        switch q_mode
+            case 'fixed'
+                % No adaptation
+            case 'q22_only'
+                Q_out(2,2) = max(1e-6, 0.9 * Q_prev(2,2) + 0.1 * Q_est_diag(2,2));
+            case 'q11_only'
+                Q_out(1,1) = max(1e-6, 0.9 * Q_prev(1,1) + 0.1 * Q_est_diag(1,1));
+            otherwise % 'both'
+                Q_out(1,1) = max(1e-6, 0.9 * Q_prev(1,1) + 0.1 * Q_est_diag(1,1));
+                Q_out(2,2) = max(1e-6, 0.9 * Q_prev(2,2) + 0.1 * Q_est_diag(2,2));
+        end
     end
     
     % Outputs
@@ -67,4 +81,9 @@ function [x_post, P_post, alpha_out, beta_out, Q_out, meta] = hvb_akf_delay_trac
     meta.K_gain = K_gain;
     meta.Lambda_k = Lambda_k;
     meta.Q_diag = diag(Q_out);
+    
+    meta.innovation = z_k - H * x_pred;
+    meta.S = H * P_pred * H' + R_eff;
+    meta.NIS = meta.innovation^2 / max(meta.S, eps);
+    meta.P_pred_diag = diag(P_pred);
 end

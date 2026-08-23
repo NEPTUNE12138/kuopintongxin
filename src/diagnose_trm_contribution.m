@@ -93,9 +93,7 @@ function diagnose_trm_contribution(mode)
                 g_raw = conv(rx_noisy, conj(fliplr(preamble)));
                 
                 [~, peak_idx] = max(abs(g_raw));
-                win_start = max(1, peak_idx - 50);
-                win_end   = min(length(rx_noisy), peak_idx + 200);
-                g_win = g_raw(win_start:win_end);
+                [g_win, win_start, win_end] = extract_mf_local_window(g_raw, peak_idx, 50, 200);
                 
                 expected_peaks = (length(preamble) + true_tap_samples - 1) - win_start + 1;
                 
