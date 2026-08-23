@@ -24,11 +24,21 @@ function main_WUWNET_Paper_Stress(mode)
     % Data structures to save per variant
     num_syms = cfg.num_diff_symbols;
     
+    % Zones for stats
+    z1_start = 1; z1_end = floor(num_syms/3);
+    z2_start = z1_end + 1; z2_end = floor(2*num_syms/3);
+    z3_start = z2_end + 1; z3_end = num_syms;
+    
     results = struct();
     for v = 1:num_variants
         vc = variants{v};
-        results.(vc).rmse = NaN(1, num_mc);
+        results.(vc).rmse_pre = NaN(1, num_mc);
+        results.(vc).rmse_fade = NaN(1, num_mc);
+        results.(vc).rmse_post = NaN(1, num_mc);
+        results.(vc).mean_K_fade = NaN(1, num_mc);
+        results.(vc).mean_Reff_fade = NaN(1, num_mc);
         results.(vc).ber = NaN(1, num_mc);
+        results.(vc).valid = false(1, num_mc);
         
         % We only save the last valid trial's meta for plotting (to save space)
         results.(vc).sample_meta = [];
@@ -42,6 +52,10 @@ function main_WUWNET_Paper_Stress(mode)
             fprintf('  Prog: %d/%d (%.1f%%)\n', mc, num_mc, 100*mc/num_mc);
         end
         
+        % Deterministic Seed
+        rng_seed = cfg.master_seed + mc + 999000;
+        rng(rng_seed, 'twister');
+        
         % 1. Generate Signal
         [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg);
         
@@ -51,7 +65,6 @@ function main_WUWNET_Paper_Stress(mode)
         % 3. Apply Continuous Time-Warping
         t = (0:length(rx_multi)-1) / cfg.fs;
         
-        % Dynamic Profile: Sinusoidal speed variation
         v0 = 0.5; % 0.5 m/s mean
         A_v = 1.5; % 1.5 m/s amplitude
         f_v = 0.2; % 0.2 Hz
@@ -67,7 +80,6 @@ function main_WUWNET_Paper_Stress(mode)
         epsilon_true_samples = (t - t_src) * cfg.fs;
         
         % 4. Add Deep Fades (Amplitude Modulation)
-        % Apply a severe fade in the middle of the packet
         fade_mask = ones(size(rx_warp));
         packet_duration = length(rx_warp) / cfg.fs;
         fade_center = packet_duration / 2;
@@ -107,46 +119,62 @@ function main_WUWNET_Paper_Stress(mode)
                 if strcmp(meta.status, 'SUCCESS') && length(decoded_bits) == cfg.num_data_bits
                     errors = sum(decoded_bits ~= data_bits(1:length(decoded_bits)));
                     results.(vc).ber(mc) = errors / cfg.num_data_bits;
+                    results.(vc).valid(mc) = true;
                     
                     eps_est_rel = meta.delay_est_samples - meta.delay_est_samples(1);
                     err = eps_est_rel - eps_true_rel;
-                    results.(vc).rmse(mc) = sqrt(mean(err.^2));
+                    
+                    results.(vc).rmse_pre(mc) = sqrt(mean(err(z1_start:z1_end).^2));
+                    results.(vc).rmse_fade(mc) = sqrt(mean(err(z2_start:z2_end).^2));
+                    results.(vc).rmse_post(mc) = sqrt(mean(err(z3_start:z3_end).^2));
+                    results.(vc).mean_K_fade(mc) = mean(meta.K_gain(1, z2_start:z2_end));
+                    results.(vc).mean_Reff_fade(mc) = mean(meta.R_eff(z2_start:z2_end));
                     
                     % Save one valid sample
                     results.(vc).sample_meta = meta;
                     results.(vc).sample_eps_true = eps_true_rel;
-                else
-                    results.(vc).ber(mc) = NaN;
-                    results.(vc).rmse(mc) = NaN;
                 end
             catch ME
-                if strcmp(ME.identifier, 'Paper2:SyncFail')
-                    results.(vc).ber(mc) = NaN;
-                    results.(vc).rmse(mc) = NaN;
-                else
+                if ~strcmp(ME.identifier, 'Paper2:SyncFail')
                     rethrow(ME);
                 end
             end
         end
     end
     
-    % Metrics
+    % Metrics and CSV Export
     fprintf('\n--- Stress Test Summary ---\n');
+    timestamp = datestr(now, 'yyyymmdd_HHMMSS');
+    csv_file = fullfile(out_dir, sprintf('paper2_stress_summary_%s.csv', timestamp));
+    fid = fopen(csv_file, 'w');
+    fprintf(fid, 'Variant,Valid_Rate,Mean_BER,RMSE_Pre,RMSE_Fade,RMSE_Post,Mean_K_Fade,Mean_Reff_Fade\n');
+    
     for v = 1:num_variants
         vc = variants{v};
-        valid_mask = ~isnan(results.(vc).ber);
+        valid_mask = results.(vc).valid;
         valid_count = sum(valid_mask);
+        valid_rate = valid_count / num_mc;
+        
+        m_ber = mean(results.(vc).ber(valid_mask));
+        m_pre = mean(results.(vc).rmse_pre(valid_mask));
+        m_fade = mean(results.(vc).rmse_fade(valid_mask));
+        m_post = mean(results.(vc).rmse_post(valid_mask));
+        m_k = mean(results.(vc).mean_K_fade(valid_mask));
+        m_reff = mean(results.(vc).mean_Reff_fade(valid_mask));
         
         fprintf('Variant %s:\n', vc);
-        fprintf('  Valid Trials: %d/%d (%.1f%%)\n', valid_count, num_mc, 100*valid_count/num_mc);
+        fprintf('  Valid Trials: %d/%d (%.1f%%)\n', valid_count, num_mc, 100*valid_rate);
         if valid_count > 0
-            fprintf('  Mean BER: %.4f\n', mean(results.(vc).ber(valid_mask)));
-            fprintf('  Mean RMSE: %.4f samples\n', mean(results.(vc).rmse(valid_mask)));
+            fprintf('  Mean BER: %.4f\n', m_ber);
+            fprintf('  RMSE Pre/Fade/Post: %.4f / %.4f / %.4f samples\n', m_pre, m_fade, m_post);
         end
+        
+        fprintf(fid, '%s,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
+            vc, valid_rate, m_ber, m_pre, m_fade, m_post, m_k, m_reff);
     end
+    fclose(fid);
     
-    timestamp = datestr(now, 'yyyymmdd_HHMMSS');
     save_file = fullfile(out_dir, sprintf('paper2_stress_%s_%s.mat', mode, timestamp));
     save(save_file, 'results', 'cfg', 'variants', 'mode');
-    fprintf('Stress results saved to: %s\n', save_file);
+    fprintf('Stress results saved to:\n  %s\n  %s\n', save_file, csv_file);
 end

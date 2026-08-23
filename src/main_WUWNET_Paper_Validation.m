@@ -14,8 +14,9 @@ function main_WUWNET_Paper_Validation(mode)
     num_channels = size(cfg.channels, 1);
     num_mc = cfg.mc_trials_ber;
     
+    % Store raw bit errors (NaN for sync failure)
     % Dimensions: [Channel, SNR, Variant, MC]
-    ber_results = NaN(num_channels, num_snr, num_variants, num_mc);
+    raw_errors = NaN(num_channels, num_snr, num_variants, num_mc);
     
     fprintf('\n=== Starting BER Validation (%s) ===\n', upper(mode));
     fprintf('Channels: %d | SNRs: %d | MC Trials: %d\n', num_channels, num_snr, num_mc);
@@ -43,6 +44,10 @@ function main_WUWNET_Paper_Validation(mode)
                     fprintf('  Prog: %d/%d (%.1f%%) [SNR %d dB, MC %d]\n', iter_count, total_iters, 100*iter_count/total_iters, snr_db, mc);
                 end
                 
+                % Deterministic Seed
+                rng_seed = cfg.master_seed + mc + snr_idx*10000 + ch_idx*100000;
+                rng(rng_seed, 'twister');
+                
                 % 1. Generate Signal
                 [tx_pb, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg);
                 
@@ -69,18 +74,15 @@ function main_WUWNET_Paper_Validation(mode)
                     try
                         [decoded_bits, ~, meta] = run_paper2_receiver_variant(rx_noisy, preamble, mseq_os, sync_meta, cfg, var_char);
                         
-                        if strcmp(meta.status, 'SYNC_FAIL')
-                            ber_results(ch_idx, snr_idx, v, mc) = NaN; % Sync fail tracked as NaN
-                        elseif isempty(decoded_bits)
-                            ber_results(ch_idx, snr_idx, v, mc) = NaN;
+                        if strcmp(meta.status, 'SYNC_FAIL') || isempty(decoded_bits)
+                            raw_errors(ch_idx, snr_idx, v, mc) = NaN; % Sync fail tracked as NaN
                         else
                             errors = sum(decoded_bits ~= data_bits(1:length(decoded_bits)));
-                            ber = errors / max(1, length(decoded_bits));
-                            ber_results(ch_idx, snr_idx, v, mc) = ber;
+                            raw_errors(ch_idx, snr_idx, v, mc) = errors;
                         end
                     catch ME
                         if strcmp(ME.identifier, 'Paper2:SyncFail')
-                            ber_results(ch_idx, snr_idx, v, mc) = NaN;
+                            raw_errors(ch_idx, snr_idx, v, mc) = NaN;
                         else
                             rethrow(ME); % Unexpected exceptions MUST be rethrown
                         end
@@ -90,27 +92,50 @@ function main_WUWNET_Paper_Validation(mode)
         end
     end
     
-    % Metrics computation
-    % For each variant, channel, SNR: calculate mean BER, FER, valid trials
+    % Metrics computation and CSV export
     fprintf('\n--- BER Validation Summary ---\n');
+    timestamp = datestr(now, 'yyyymmdd_HHMMSS');
+    csv_file = fullfile(out_dir, sprintf('paper2_ber_validation_%s.csv', timestamp));
+    fid = fopen(csv_file, 'w');
+    fprintf(fid, 'Channel,SNR_dB,Variant,Valid_Trials,Sync_Fail_Rate,FER,BER,Wilson_Lower,Wilson_Upper\n');
+    
+    % To be compatible with previous scripts, create ber_results struct/matrix
+    ber_results = NaN(num_channels, num_snr, num_variants, num_mc);
+    
     for ch_idx = 1:num_channels
         fprintf('Channel %d:\n', ch_idx);
         for v = 1:num_variants
-            total_trials = num_mc * num_snr;
-            all_bers = squeeze(ber_results(ch_idx, :, v, :));
-            valid_mask = ~isnan(all_bers);
-            num_valid = sum(valid_mask(:));
-            sync_fail_rate = 1 - (num_valid / total_trials);
+            var_char = variants{v};
             
-            % Compute aggregate BER over all SNRs just for console print
-            % Actually, it's better to print per SNR, but for brevity we print sync fail.
+            total_valid_across_snrs = 0;
+            total_trials_across_snrs = num_mc * num_snr;
+            
+            for snr_idx = 1:num_snr
+                snr_db = cfg.snr_range(snr_idx);
+                trial_errs = squeeze(raw_errors(ch_idx, snr_idx, v, :))';
+                
+                % Fill in the legacy ber_results mapping (just trial_errs / bits)
+                ber_results(ch_idx, snr_idx, v, :) = trial_errs / cfg.num_data_bits;
+                
+                stats = compute_paper2_ber_statistics(trial_errs, cfg.num_data_bits);
+                
+                total_valid_across_snrs = total_valid_across_snrs + stats.valid_trials;
+                
+                fprintf(fid, '%s,%d,%s,%d,%.4f,%.4f,%.6f,%.6f,%.6f\n', ...
+                    cfg.channels{ch_idx, 2}, snr_db, var_char, ...
+                    stats.valid_trials, stats.sync_fail_rate, stats.frame_error_rate, ...
+                    stats.ber, stats.wilson_ci(1), stats.wilson_ci(2));
+            end
+            
+            % Print aggregate for console
+            sync_fail_rate = 1 - (total_valid_across_snrs / total_trials_across_snrs);
             fprintf('  Variant %s: Valid Trials %d/%d (Fail Rate %.2f%%)\n', ...
-                variants{v}, num_valid, total_trials, sync_fail_rate * 100);
+                var_char, total_valid_across_snrs, total_trials_across_snrs, sync_fail_rate * 100);
         end
     end
+    fclose(fid);
     
-    timestamp = datestr(now, 'yyyymmdd_HHMMSS');
     save_file = fullfile(out_dir, sprintf('paper2_ber_validation_%s.mat', timestamp));
-    save(save_file, 'ber_results', 'cfg', 'variants', 'mode');
-    fprintf('Validation results saved to: %s\n', save_file);
+    save(save_file, 'raw_errors', 'ber_results', 'cfg', 'variants', 'mode');
+    fprintf('Validation results saved to:\n  %s\n  %s\n', save_file, csv_file);
 end

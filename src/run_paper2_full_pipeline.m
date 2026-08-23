@@ -1,56 +1,68 @@
-% run_paper2_full_pipeline.m
-% WUWNET Paper 2 Master Pipeline
-clc; clear; close all;
-addpath('../lib');
-addpath('../config');
+function run_paper2_full_pipeline(mode)
+% RUN_PAPER2_FULL_PIPELINE End-to-end execution of the Paper 2 evaluation.
+% Usage: run_paper2_full_pipeline('quick') or ('pilot') or ('paper')
 
-fprintf('=========================================\n');
-fprintf('  WUWNET Paper 2 Full Pipeline Execution \n');
-fprintf('=========================================\n\n');
-
-try
-    fprintf('1. Checking Dependencies & Bellhop Channels...\n');
-    cfg = paper2_config('quick');
-    for i = 1:size(cfg.channels, 1)
-        if ~exist(cfg.channels{i, 1}, 'file')
-            error('Missing channel file: %s', cfg.channels{i, 1});
-        end
+    if nargin < 1
+        mode = 'quick';
     end
     
-    fprintf('2. Running Unit Tests...\n');
-    cd('../tests');
-    test_signal_model;
-    test_hybrid_cir_extraction;
-    test_hvb_tracker;
-    test_variant_consistency;
-    cd('../src');
+    fprintf('=== Paper 2 Full Pipeline [%s] ===\n', upper(mode));
     
-    fprintf('3. Exporting Parameters...\n');
-    export_paper_parameters;
+    % 1. Run all Gate tests
+    fprintf('\n--- Running Gate Verification Tests ---\n');
+    project_root = fileparts(fileparts(mfilename('fullpath')));
+    addpath(fullfile(project_root, 'config'));
+    addpath(fullfile(project_root, 'lib'));
+    addpath(fullfile(project_root, 'tests'));
+    addpath(fullfile(project_root, 'src'));
     
-    fprintf('4. Final 3-Channel BER Simulation...\n');
-    % Uncomment to run real simulation
-    % main_WUWNET_Paper_Validation; 
-    fprintf(' (Skipped here to prevent blocking, run manually if needed)\n');
+    try
+        test_signal_model;
+        test_bellhop_loader;
+        test_hybrid_cir_extraction;
+        test_hvb_tracker;
+        test_variant_consistency;
+        test_early_late_sign;
+        test_end_to_end_noiseless;
+        test_end_to_end_bellhop_smoke;
+        test_delay_tracking_ground_truth;
+        test_ber_failure_statistics;
+        test_variant_D_R_stability;
+        fprintf('\nALL GATE TESTS PASSED!\n');
+    catch ME
+        fprintf('\n[!] GATE TEST FAILED: %s\n', ME.message);
+        rethrow(ME);
+    end
     
-    fprintf('5. Extreme Fading Stress Test...\n');
-    % main_WUWNET_Paper_Stress;
-    fprintf(' (Skipped here to prevent blocking, run manually if needed)\n');
+    % 2. Execution Phase
+    fprintf('\n--- Execution Phase ---\n');
     
-    fprintf('6. TRM Real-Data Ablation...\n');
+    % BER Validation
+    main_WUWNET_Paper_Validation(mode);
+    
+    % Stress Test
+    main_WUWNET_Paper_Stress(mode);
+    
+    % 3. Ancillary Scripts and Plots
+    fprintf('\n--- Ancillary Scripts and Plots ---\n');
+    
+    fprintf('Running TRM Ablation...\n');
     generate_paper_trm_ablation;
     
-    fprintf('7. C2 Sensitivity...\n');
+    fprintf('Running C2 Sensitivity...\n');
     plot_sensitivity_c2;
     
-    fprintf('8. Runtime Benchmark...\n');
+    fprintf('Running Runtime Benchmark...\n');
     benchmark_paper2_receivers;
     
-    fprintf('\n=========================================\n');
-    fprintf(' Pipeline Executed Successfully!\n');
-    fprintf('=========================================\n');
-catch ME
-    fprintf('\n=========================================\n');
-    fprintf(' PIPELINE FAILED: %s\n', ME.message);
-    fprintf('=========================================\n');
+    fprintf('Exporting Parameters...\n');
+    export_paper_parameters;
+    
+    fprintf('Plotting all Channels BER...\n');
+    plot_all_3_channels_ber(mode);
+    
+    fprintf('Extracting Metrics...\n');
+    extract_paper_metrics(mode);
+    
+    fprintf('\n=== Pipeline Completed Successfully ===\n');
 end

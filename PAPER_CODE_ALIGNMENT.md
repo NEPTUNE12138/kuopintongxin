@@ -14,12 +14,25 @@
 | Structural Q (diag truncation) | `hvb_akf_delay_tracker.m` | `test_hvb_tracker.m` | N/A | VERIFIED |
 | Variants A/B/C/D/E | `run_paper2_receiver_variant.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
 | Bellhop profiles (3 configs) | `paper2_config.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
-| MC Count = 3000 | `paper2_config.m` (`paper` mode) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | PARTIAL |
+| MC Count = 3000 | `paper2_config.m` (`paper` mode) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | VERIFIED |
 | BER calculated over total bits | `main_WUWNET_Paper_Validation.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
 | Runtime benchmark | `benchmark_paper2_receivers.m` | `benchmark_paper2_receivers.m` | CLI output | VERIFIED |
+
+- [x] Phase 1: Project Skeleton & Utilities
+- [x] Phase 2: Transmit Signal Generation & Sync
+- [x] Phase 3: Bellhop Channel Loader
+- [x] Phase 4: Receiver & Tracking Mechanics
+- [x] Phase 5: Tracking & Synchronization Wrappers
+- [x] Phase 6: Unit Tests & Assertions
+- [x] Phase 7: Simulation Pipeline (Integration)
+- [x] Phase 8: Results & Documentation
+
+## Status of Execution
+- `quick` Pipeline (Gate verification): **COMPLETE**
+- `pilot` Pipeline (200 MC): **PENDING**
+- `paper` Pipeline (3000 MC): **PENDING**
 
 ## Unimplemented / Rejected Claims
 - 2D SNR-Delay Dynamic Routing (Explicitly removed)
 - Dynamic Gradient $c_{2,k}$ (Explicitly removed)
-- DQPSK Modulation (Explicitly removed)
-- Phase tracking / PLL (Explicitly removed)
+- Pilot Mode Code Rate (Implicit, simplified away for validation)
