@@ -48,4 +48,14 @@ function stats = compute_paper2_ber_statistics(bit_errors, valid_flags, total_bi
     
     stats.FrameErrors_Overall = stats.SyncFailCount + (stats.Trials_Valid > 0) * sum(bit_errors(valid_flags) > 0);
     stats.FER_Overall = stats.FrameErrors_Overall / max(N, 1);
+    
+    % Wilson CI for Overall FER
+    z = 1.96;
+    p_fer = stats.FER_Overall;
+    n_fer = max(N, 1);
+    denom_fer = 1 + z^2/n_fer;
+    center_fer = (p_fer + z^2/(2*n_fer)) / denom_fer;
+    hw_fer = z * sqrt(p_fer*(1-p_fer)/n_fer + z^2/(4*n_fer^2)) / denom_fer;
+    stats.Wilson_Lower_OverallFER = max(0, center_fer - hw_fer);
+    stats.Wilson_Upper_OverallFER = min(1, center_fer + hw_fer);
 end

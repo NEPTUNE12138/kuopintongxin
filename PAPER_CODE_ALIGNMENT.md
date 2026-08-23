@@ -12,7 +12,7 @@
 | VB coordinate-ascent | `hvb_akf_delay_tracker.m` (inner loop) | `test_hvb_tracker.m` | N/A | VERIFIED |
 | Fixed c2 heteroscedastic penalty | `hvb_akf_delay_tracker.m` | `plot_sensitivity_c2.m` | `Fig_Sensitivity_c2.png` | VERIFIED |
 | Structural Q (diag truncation) | `hvb_akf_delay_tracker.m` | `test_hvb_tracker.m` | N/A | VERIFIED |
-| Variants A/B/C/D/E | `run_paper2_receiver_variant.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
+| Final publication variants IAE / VB-FQ / E-FQ | N/A | N/A | N/A | FROZEN FOR PILOT |
 | Bellhop profiles (3 configs) | `paper2_config.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
 | MC Count = 3000 | `paper2_config.m` (`paper` mode) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | PARTIAL |
 | BER calculated over total bits | `main_WUWNET_Paper_Validation.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
@@ -42,6 +42,10 @@
 - Final publication variants: IAE / VB-FQ / E-FQ
 - Pilot: READY ONLY IF corrected FINAL-1..10 pass
 - Paper: NOT RUN
+
+*Status: FROZEN FOR PILOT*
+
+*Note: The SyncFailRate metric reflects post-acquisition receiver processing failure rate (ReceiverFailRate), as the coarse synchronizer does not use a calibrated detector threshold.*
 
 *Archival Note: Round-7 RMS-delay-spread column was input-channel RDS; not used in adoption gates.*
 
