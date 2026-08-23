@@ -1,57 +1,47 @@
-function [sig_bb_tx, data_bits, preamble, mseq, mseq_ref] = generate_paper2_tx_signal(cfg)
-% GENERATE_PAPER2_TX_SIGNAL Generates the DBPSK/DSSS baseband signal and preamble
-    
-    fs = cfg.fs;
-    fc = cfg.fc;
-    num_syms = cfg.num_symbols;
-    mseq_len = cfg.mseq_len;
-    N_pn = cfg.N_pn;
-    samples_per_chip = cfg.samples_per_chip;
+function [tx_passband, data_bits, preamble, mseq, mseq_os, tx_meta] = generate_paper2_tx_signal(cfg)
+% GENERATE_PAPER2_TX_SIGNAL Generates the full analytic-passband packet 
+% including HFM preamble and DBPSK/DSSS payload.
     
     % 1. Preamble (HFM)
-    B = cfg.preamble_band(2) - cfg.preamble_band(1);
-    f0 = cfg.preamble_band(1);
-    f1 = cfg.preamble_band(2);
-    T_pre = 0.05; % 50ms preamble
-    t_pre = 0:1/fs:T_pre-1/fs;
-    % HFM: phase = 2*pi*(f0*f1*T_pre/(f1-f0)) * log(1 + (f1-f0)*t/(f0*T_pre))
-    % For simplicity, we use LFM as an approximation if HFM is not strictly required for the waveform, 
-    % or we implement true HFM.
-    K = (f1 - f0) / T_pre;
-    preamble = exp(1j * 2 * pi * (f0 * t_pre + 0.5 * K * t_pre.^2));
+    preamble = generate_hfm_preamble(cfg);
     
     % 2. M-sequence
-    if exist(cfg.mseq_path, 'file')
-        m_data = load(cfg.mseq_path);
-        if isfield(m_data, 'mseq')
-            mseq_raw = m_data.mseq;
-        else
-            f = fieldnames(m_data);
-            mseq_raw = m_data.(f{1});
-        end
-        if iscell(mseq_raw), mseq = mseq_raw{1}; else, mseq = mseq_raw; end
-    else
-        mseq = 2 * randi([0, 1], 1, mseq_len) - 1;
-    end
-    mseq = mseq(:)';
-    
-    mseq_up = repelem(mseq, samples_per_chip);
-    mseq_ref = repmat(mseq_up, 1, N_pn);
+    mseq = load_paper2_mseq(cfg);
+    mseq_os = repelem(mseq, cfg.samples_per_chip); % oversampled m-sequence
     
     % 3. Data & DBPSK
-    data_bits = randi([0, 1], 1, num_syms);
+    data_bits = randi([0, 1], 1, cfg.num_data_bits);
     data_syms = 2 * data_bits - 1;
     
-    diff_syms = zeros(1, num_syms + 1);
-    diff_syms(1) = 1; % Reference
-    for i = 1:num_syms
+    diff_syms = zeros(1, cfg.num_data_bits + 1);
+    diff_syms(1) = 1; % Reference symbol
+    for i = 1:cfg.num_data_bits
         diff_syms(i+1) = diff_syms(i) * data_syms(i);
     end
     
-    % 4. Spreading
-    data_bb = kron(diff_syms, mseq_ref);
+    % 4. Spreading (Baseband)
+    data_bb = kron(diff_syms, mseq_os);
+    assert(length(data_bb) == cfg.num_diff_symbols * cfg.symbol_samples, 'Payload length error.');
     
-    % 5. Assembly
-    guard = zeros(1, round(0.05 * fs)); % 50ms guard
-    sig_bb_tx = [preamble, guard, data_bb, guard];
+    % 5. Upconversion to Analytic Passband
+    t_data = (0:length(data_bb)-1) / cfg.fs;
+    data_pb = data_bb .* exp(1j * 2 * pi * cfg.fc * t_data);
+    
+    % 6. Assembly
+    guard = zeros(1, cfg.guard_samples);
+    tx_passband = [preamble, guard, data_pb, guard];
+    
+    % 7. TX Meta
+    tx_meta = struct();
+    tx_meta.num_data_bits = cfg.num_data_bits;
+    tx_meta.num_diff_symbols = cfg.num_diff_symbols;
+    tx_meta.code_length = cfg.code_length;
+    tx_meta.samples_per_chip = cfg.samples_per_chip;
+    tx_meta.symbol_samples = cfg.symbol_samples;
+    tx_meta.preamble_samples = cfg.preamble_samples;
+    tx_meta.guard_samples = cfg.guard_samples;
+    tx_meta.payload_start_index = length(preamble) + length(guard) + 1;
+    tx_meta.payload_end_index = tx_meta.payload_start_index + length(data_pb) - 1;
+    tx_meta.fs = cfg.fs;
+    tx_meta.fc = cfg.fc;
 end

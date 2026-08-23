@@ -1,13 +1,9 @@
 function [threshold, mask, meta] = os_cfar_1d(x_power, train_cells, guard_cells, order_idx, pfa)
 % OS_CFAR_1D 1D Ordered-Statistic CFAR for power sequence
-% x_power: 1D power sequence (abs(x).^2)
-% train_cells: Total number of training cells (sum of both sides)
-% guard_cells: Total number of guard cells (sum of both sides)
-% order_idx: The k-th rank to select (if < 1, treated as fraction of train_cells)
-% pfa: Target Probability of False Alarm
+% Strictly enforces full training window to avoid false edge detections.
 
     N = length(x_power);
-    x_power = x_power(:)'; % Make row vector
+    x_power = x_power(:)'; 
     
     half_train = round(train_cells / 2);
     half_guard = round(guard_cells / 2);
@@ -19,16 +15,10 @@ function [threshold, mask, meta] = os_cfar_1d(x_power, train_cells, guard_cells,
     end
     k = max(1, min(k, train_cells));
     
-    % Find scaling factor alpha
-    % Formula for OS-CFAR in exponential noise:
-    % Pfa = k * nchoosek(train_cells, k) * beta(k, train_cells - k + 1 + alpha)
-    % We use fzero to solve for alpha
-    
     N_t = train_cells;
     
-    % Safeguard for large combinations
+    % Find scaling factor alpha
     try
-        % log-domain to avoid Inf in nchoosek
         log_k_choose_k = gammaln(N_t + 1) - gammaln(k + 1) - gammaln(N_t - k + 1);
         obj_fun = @(alpha) pfa - exp(log(k) + log_k_choose_k + gammaln(k) + gammaln(N_t - k + 1 + alpha) - gammaln(N_t + 1 + alpha));
         
@@ -41,41 +31,27 @@ function [threshold, mask, meta] = os_cfar_1d(x_power, train_cells, guard_cells,
             alpha = alpha_search(min_idx);
         end
     catch
-        % Fallback scaling factor if numerical issues occur
-        alpha = -log(pfa) * (N_t / k); % Crude approximation
+        alpha = -log(pfa) * (N_t / k); 
     end
     
-    threshold = zeros(1, N);
+    threshold = inf(1, N); % Default to Inf at edges
     
     for i = 1:N
-        % Define window indices
-        left_train_start = max(1, i - half_guard - half_train);
-        left_train_end   = max(0, i - half_guard - 1);
+        left_train_start = i - half_guard - half_train;
+        left_train_end   = i - half_guard - 1;
         
-        right_train_start = min(N + 1, i + half_guard + 1);
-        right_train_end   = min(N, i + half_guard + half_train);
+        right_train_start = i + half_guard + 1;
+        right_train_end   = i + half_guard + half_train;
         
-        % Extract training cells
-        cells = [];
-        if left_train_end >= left_train_start
-            cells = [cells, x_power(left_train_start:left_train_end)];
-        end
-        if right_train_end >= right_train_start
-            cells = [cells, x_power(right_train_start:right_train_end)];
+        % Edge check: Only detect if full window is available
+        if left_train_start < 1 || right_train_end > N
+            continue; 
         end
         
-        if isempty(cells)
-            threshold(i) = inf; % Cannot detect
-            continue;
-        end
-        
-        % Sort and select k-th order statistic
-        actual_N = length(cells);
-        actual_k = round(k * (actual_N / train_cells));
-        actual_k = max(1, min(actual_k, actual_N));
+        cells = [x_power(left_train_start:left_train_end), x_power(right_train_start:right_train_end)];
         
         sorted_cells = sort(cells, 'ascend');
-        noise_est = sorted_cells(actual_k);
+        noise_est = sorted_cells(k);
         
         threshold(i) = alpha * noise_est;
     end

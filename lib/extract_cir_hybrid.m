@@ -68,6 +68,13 @@ function [h_ext, gamma_os, gamma_acf, gamma_hybrid, mask, meta] = extract_cir_hy
     h_ext = zeros(size(g));
     h_ext(mask) = g(mask);
     
+    % Fallback: if threshold is so high that nothing is detected (e.g., pure OS-CFAR on HFM)
+    if ~any(mask)
+        [~, max_idx] = max(abs(g));
+        h_ext(max_idx) = g(max_idx);
+        mask(max_idx) = true;
+    end
+    
     % 8. Output Metadata
     meta.os_meta = os_meta;
     meta.rho_side = rho_side;

@@ -1,33 +1,34 @@
-% test_hvb_tracker.m
-addpath('../lib');
-addpath('../config');
+function test_hvb_tracker()
+% TEST_HVB_TRACKER Validates Q-freeze and heteroscedastic penalty scaling.
 
-cfg = paper2_config('quick');
-cfg.symbol_dur = 1; % Normalised
-z_k = 0.1;
-u_k = 1;
-u_prev = 1;
-x_prev = [0; 0];
-P_prev = eye(2);
-alpha_prev = 2;
-beta_prev = 0.1;
-Q_prev = [1e-4, 0; 0, 1e-4];
-
-% 1. High reliability (m_k = 1)
-[x1, P1, a1, b1, Q1, meta1] = hvb_akf_delay_tracker(z_k, u_k, u_prev, x_prev, P_prev, alpha_prev, beta_prev, Q_prev, cfg);
-
-% 2. Low reliability (m_k = 0.1)
-u_k_low = 0.1;
-[x2, P2, a2, b2, Q2, meta2] = hvb_akf_delay_tracker(z_k, u_k_low, u_prev, x_prev, P_prev, alpha_prev, beta_prev, Q_prev, cfg);
-
-assert(meta1.Lambda_k < meta2.Lambda_k, 'Error: Lambda should increase in deep fade');
-assert(meta2.R_eff > meta2.R_vb, 'Error: R_eff should be > R_vb in deep fade');
-assert(abs(meta1.K_gain(1)) > abs(meta2.K_gain(1)), 'Error: Kalman gain should decrease in deep fade');
-
-% 3. Check Q is diagonal
-assert(Q1(1,2) == 0 && Q1(2,1) == 0, 'Error: Q matrix has non-zero off-diagonal elements');
-
-% 4. No NaN/Inf
-assert(~any(isnan(x1)) && ~any(isinf(x1)), 'Error: Output contains NaN/Inf');
-
-fprintf('test_hvb_tracker: Passed.\n');
+    cfg = paper2_config('quick');
+    
+    % Initial states
+    x_k = [0; 0];
+    P_k = eye(2);
+    alpha_k = 2;
+    beta_k = 0.1;
+    Q_k = [0.1 0; 0 0.1];
+    
+    % 1. High reliability test
+    z_k = 0.5;
+    u_k = 1;
+    u_prev = 1;
+    m_k = 1.0;
+    
+    [x1, P1, a1, b1, Q1, meta1] = hvb_akf_delay_tracker(z_k, u_k, u_prev, m_k, x_k, P_k, alpha_k, beta_k, Q_k, cfg);
+    
+    assert(meta1.Lambda_k == 1.0, 'Lambda must be 1 when m_k = 1');
+    assert(any(Q1(:) ~= Q_k(:)), 'Q must adapt when reliable');
+    
+    % 2. Deep fade test (Q-freeze)
+    m_k_fade = 0; % complete fade
+    
+    [x2, P2, a2, b2, Q2, meta2] = hvb_akf_delay_tracker(z_k, u_k, u_prev, m_k_fade, x_k, P_k, alpha_k, beta_k, Q_k, cfg);
+    
+    assert(meta2.Lambda_k > 1, 'Lambda must be > 1 in fade');
+    assert(abs(meta2.Lambda_k - 51) < 1, 'Lambda max should be approx 51 for c2=1/50');
+    assert(all(Q2(:) == Q_k(:)), 'Q must freeze in deep fade');
+    
+    disp('test_hvb_tracker passed.');
+end

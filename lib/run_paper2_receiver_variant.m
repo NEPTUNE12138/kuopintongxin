@@ -1,201 +1,207 @@
-function [decoded_bits, track_err_hist, runtime, meta] = run_paper2_receiver_variant(sig_bb, preamble, mseq_ref, cfg, variant)
-% RUN_PAPER2_RECEIVER_VARIANT Unified wrapper for Paper 2 ablation baselines
-% Inputs:
-%   sig_bb   - Received baseband signal
-%   preamble - HFM preamble waveform
-%   mseq_ref - Upsampled m-sequence reference for correlation
-%   cfg      - configuration struct
-%   variant  - 'A', 'B', 'C', 'D', 'E'
-%
-% Variants:
-% A - No TRM + IAE-AKF
-% B - Conventional TRM (pure OS-CFAR) + IAE-AKF
-% C - Hybrid TRM + IAE-AKF
-% D - Hybrid TRM + Confidence-Gated IAE-AKF
-% E - Hybrid TRM + HVB-AKF (Proposed)
+function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, preamble, mseq_ref, sync_meta, cfg, variant_char)
+% RUN_PAPER2_RECEIVER_VARIANT Unified wrapper for Paper 2 receivers.
 
     tic;
+    meta = struct();
+    meta.status = 'SUCCESS';
+    meta.failure_reason = '';
+    meta.variant = variant_char;
     
-    %% 1. Preamble Synchronization & CIR Extraction
-    % Matched filtering with preamble
-    corr_out = xcorr(sig_bb, preamble);
-    corr_out = corr_out(length(sig_bb):end); % Keep valid part
-    
-    [peak_val, peak_idx] = max(abs(corr_out));
-    
-    % Define CIR extraction window (e.g., -50 to +200 samples around peak)
-    win_start = max(1, peak_idx - 50);
-    win_end   = min(length(corr_out), peak_idx + 200);
-    g_win = corr_out(win_start:win_end);
-    
-    % Default TRM filter is just a delta function (No TRM)
-    q_filter = 1;
-    trm_delay = 0;
-    
-    meta.variant = variant;
-    
-    if variant == 'A'
-        % No TRM
-        h_ext = zeros(size(g_win));
-        [~, local_peak] = max(abs(g_win));
-        h_ext(local_peak) = g_win(local_peak);
-        q_filter = conj(fliplr(h_ext));
-        trm_delay = length(h_ext) - 1;
-    else
-        % Extract CIR
-        cfg_trm = cfg;
-        if variant == 'B'
-            cfg_trm.kappa_side = 0; % Disable ACF sidelobe threshold for pure OS-CFAR
-        end
+    try
+        % 1. Configuration and Definitions
+        var_def = paper2_variant_definition(variant_char);
         
-        [h_ext, gamma_os, gamma_acf, gamma_hybrid, mask, cir_meta] = extract_cir_hybrid(g_win, preamble, cfg_trm);
+        % 2. CIR Extraction (using same coarse sync peak)
+        peak_idx = sync_meta.peak_idx;
+        win_start = max(1, peak_idx - 50);
+        win_end   = min(length(sig_pb), peak_idx + 200);
         
-        if variant == 'B'
-            % For variant B, force hybrid threshold to be just OS threshold
-            h_ext = zeros(size(g_win));
-            h_ext(abs(g_win) >= gamma_os) = g_win(abs(g_win) >= gamma_os);
-        end
+        g_win = sync_meta.mf(win_start:win_end);
         
-        q_filter = conj(fliplr(h_ext));
-        trm_delay = length(h_ext) - 1;
-        meta.cir_meta = cir_meta;
-    end
-    
-    %% 2. Time-Reversal Pre-focusing
-    if length(q_filter) > 1
-        sig_bb_focused = filter(q_filter, 1, sig_bb);
-    else
-        sig_bb_focused = sig_bb;
-    end
-    
-    % The new peak index after filtering will be delayed by trm_delay
-    current_ptr = peak_idx + trm_delay + length(preamble); 
-    % Note: +length(preamble) because the data usually starts after the preamble.
-    % We might need a guard interval adjustment here if there is one.
-    
-    %% 3. DLL Tracking Loop Initialization
-    num_syms = cfg.num_symbols + 1; % +1 for differential encoding reference
-    len_SS = cfg.mseq_len;
-    N_pn = cfg.N_pn;
-    L_sym = len_SS * N_pn;
-    delta = round(cfg.early_late_spacing * N_pn); % samples
-    
-    % Tracker states
-    x_k = [0; 0];
-    P_k = eye(2);
-    Q_k = [0.05 0; 0 0.002];
-    
-    % HVB specific priors
-    alpha_k = 2;
-    beta_k = 0.1;
-    
-    % IAE specific
-    R_k = 0.1;
-    W_size = cfg.iae_window;
-    innov_buffer = zeros(1, W_size);
-    innov_idx = 1;
-    
-    track_err_hist = zeros(1, num_syms);
-    u_k_history = zeros(1, num_syms);
-    
-    u_prev = 1; % Initialize for the first symbol's reliability calculation
-    
-    %% 4. Tracking & Despreading Loop
-    for k = 1:num_syms
-        % Predict phase offset
-        F_mat = [1, cfg.symbol_dur; 0, 1];
-        x_pre = F_mat * x_k;
-        phase_off = round(x_pre(1));
-        
-        idx = current_ptr + phase_off;
-        
-        if (idx - delta < 1) || (idx + L_sym - 1 + delta > length(sig_bb_focused))
-            break; % Out of bounds
-        end
-        
-        % Early, Prompt, Late segments
-        seg_P = sig_bb_focused(idx : idx + L_sym - 1);
-        seg_E = sig_bb_focused(idx - delta : idx + L_sym - 1 - delta);
-        seg_L = sig_bb_focused(idx + delta : idx + L_sym - 1 + delta);
-        
-        % Despread
-        u_k = sum(seg_P .* mseq_ref) / L_sym;
-        u_k_history(k) = u_k;
-        
-        E_pwr = abs(sum(seg_E .* mseq_ref))^2;
-        L_pwr = abs(sum(seg_L .* mseq_ref))^2;
-        
-        % Discriminator
-        D_k = (L_pwr - E_pwr) / (E_pwr + L_pwr + 1e-9);
-        if abs(D_k) < 0.15
-            D_k = 0; % Dead zone
-        end
-        
-        z_k = D_k * delta;
-        track_err_hist(k) = z_k;
-        
-        % Tracking Update
-        if variant == 'E'
-            % HVB-AKF
-            [x_k, P_k, alpha_k, beta_k, Q_k, tracker_meta] = hvb_akf_delay_tracker(...
-                z_k, u_k, u_prev, x_k, P_k, alpha_k, beta_k, Q_k, cfg);
-            
-            % Save meta
-            meta.R_eff(k) = tracker_meta.R_eff;
-            meta.K_gain(:, k) = tracker_meta.K_gain;
-            meta.Lambda(k) = tracker_meta.Lambda_k;
-            
+        if ~var_def.uses_trm
+            q_filter = 1;
+            trm_group_delay = 0;
+            meta.cir_meta = struct();
         else
-            % IAE-AKF Variants (A, B, C, D)
-            H_mat = [1, 0];
-            innov_buffer(innov_idx) = z_k;
-            innov_idx = mod(innov_idx, W_size) + 1;
-            
-            if k > W_size
-                C_k = var(innov_buffer) + 1e-6;
-                R_est = C_k - H_mat * (F_mat * P_k * F_mat' + Q_k) * H_mat';
-                R_k = max(0.01, 0.8 * R_k + 0.2 * R_est);
-                
-                % Confidence Gating for Variant D
-                if variant == 'D'
-                    m_k = abs(u_k * conj(u_prev));
-                    penalty = 1 + 50 * exp(-2.5 * m_k);
-                    R_k = R_k * penalty;
-                end
-                
-                % Q adaptation
-                P_pre = F_mat * P_k * F_mat' + Q_k;
-                K_gain = P_pre * H_mat' / (H_mat * P_pre * H_mat' + R_k);
-                
-                Q_est = K_gain * C_k * K_gain';
-                Q_est = diag(diag(Q_est));
-                Q_k(1,1) = max(1e-4, 0.9 * Q_k(1,1) + 0.1 * Q_est(1,1));
-                Q_k(2,2) = max(1e-4, 0.9 * Q_k(2,2) + 0.1 * Q_est(2,2));
+            cfg_trm = cfg;
+            if ~var_def.uses_hybrid
+                cfg_trm.kappa_side = 0; % Force OS-CFAR only
             end
             
-            P_pre = F_mat * P_k * F_mat' + Q_k;
-            K_gain = P_pre * H_mat' / (H_mat * P_pre * H_mat' + R_k);
+            [h_ext, ~, ~, ~, ~, cir_meta] = extract_cir_hybrid(g_win, preamble, cfg_trm);
             
-            x_k = x_pre + K_gain * (z_k - H_mat * x_pre);
-            P_k = (eye(2) - K_gain * H_mat) * P_pre;
-            
-            meta.K_gain(:, k) = K_gain;
+            [q_filter, trm_group_delay, is_valid] = build_tr_filter(h_ext);
+            if ~is_valid
+                error('Paper2:SyncFail', 'TRM filter extraction failed (all zeros).');
+            end
+            meta.cir_meta = cir_meta;
         end
         
-        u_prev = u_k;
-        current_ptr = current_ptr + L_sym;
-    end
-    
-    % Truncate
-    u_k_history = u_k_history(u_k_history ~= 0);
-    track_err_hist = track_err_hist(1:length(u_k_history));
-    
-    %% 5. Differential Decoding
-    if length(u_k_history) > 1
-        raw_diff = u_k_history(2:end) .* conj(u_k_history(1:end-1));
+        % 3. Time-Reversal Pre-focusing
+        if length(q_filter) > 1
+            sig_focused = filter(q_filter, 1, sig_pb);
+            offset_from_peak = peak_idx - win_start;
+            trm_group_delay_true = trm_group_delay - offset_from_peak;
+        else
+            sig_focused = sig_pb;
+            trm_group_delay_true = 0;
+        end
+        
+        payload_start_focused = sync_meta.payload_start + trm_group_delay_true;
+        
+        % Downconvert focused signal to baseband. 
+        % In TX, the payload phase is 0 at the start of the payload.
+        t_down = ((1:length(sig_focused)) - payload_start_focused) / cfg.fs;
+        sig_focused_bb = sig_focused .* exp(-1j * 2 * pi * cfg.fc * t_down);
+        
+        current_ptr = payload_start_focused;
+        
+        % 4. DLL Tracking Loop Initialization
+        num_syms = cfg.num_diff_symbols;
+        L_sym = cfg.symbol_samples;
+        delta = round(0.5 * cfg.samples_per_chip); 
+        
+        x_k = [0; 0];
+        P_k = eye(2);
+        Q_k = [0.05 0; 0 0.002];
+        
+        alpha_k = 2; beta_k = 0.1;
+        R_iae = 0.1;
+        
+        W_size = cfg.W_size;
+        innov_buffer = zeros(1, W_size);
+        innov_idx = 1;
+        
+        u_prev = 1; 
+        rho_prev = 1;
+        
+        % Meta history initialization
+        meta.num_processed_symbols = 0;
+        meta.u_prompt = zeros(1, num_syms);
+        meta.delay_measurement_z = zeros(1, num_syms);
+        meta.delay_est_samples = zeros(1, num_syms);
+        meta.delay_drift_est = zeros(1, num_syms);
+        meta.K_gain = zeros(2, num_syms);
+        meta.R_vb = zeros(1, num_syms);
+        meta.R_eff = zeros(1, num_syms);
+        meta.rho = zeros(1, num_syms);
+        meta.m_reliability = zeros(1, num_syms);
+        meta.Lambda = zeros(1, num_syms);
+        meta.Q_diag = zeros(2, num_syms);
+        
+        % 5. Tracking & Despreading Loop
+        for k = 1:num_syms
+            % Predict
+            F_mat = [1 1; 0 1];
+            x_pre = F_mat * x_k;
+            phase_off = round(x_pre(1));
+            
+            idx = current_ptr + phase_off;
+            
+            if (idx - delta < 1) || (idx + L_sym - 1 + delta > length(sig_focused_bb))
+                break; % Out of bounds
+            end
+            
+            seg_P = sig_focused_bb(idx : idx + L_sym - 1);
+            seg_E = sig_focused_bb(idx - delta : idx + L_sym - 1 - delta);
+            seg_L = sig_focused_bb(idx + delta : idx + L_sym - 1 + delta);
+            
+            % Despread
+            u_k = sum(seg_P .* conj(mseq_ref)) / L_sym;
+            
+            E_pwr = abs(sum(seg_E .* conj(mseq_ref)))^2;
+            L_pwr = abs(sum(seg_L .* conj(mseq_ref)))^2;
+            
+            D_k = (L_pwr - E_pwr) / (E_pwr + L_pwr + 1e-9);
+            z_k = D_k * delta;
+            
+            % Normalized Reliability
+            corr_p = sum(seg_P .* conj(mseq_ref));
+            rho_k = abs(corr_p) / sqrt(sum(abs(seg_P).^2) * sum(abs(mseq_ref).^2) + eps);
+            rho_k = min(max(rho_k, 0), 1);
+            
+            if k == 1
+                rho_prev = rho_k;
+            end
+            m_k = sqrt(rho_k * rho_prev);
+            
+            % Save to meta
+            meta.u_prompt(k) = u_k;
+            meta.delay_measurement_z(k) = z_k;
+            meta.rho(k) = rho_k;
+            meta.m_reliability(k) = m_k;
+            
+            % Filter Update
+            if var_def.uses_vb
+                [x_k, P_k, alpha_k, beta_k, Q_k, tracker_meta] = hvb_akf_delay_tracker(...
+                    z_k, u_k, u_prev, m_k, x_k, P_k, alpha_k, beta_k, Q_k, cfg);
+                
+                meta.R_vb(k) = tracker_meta.R_vb;
+                meta.R_eff(k) = tracker_meta.R_eff;
+                meta.K_gain(:, k) = tracker_meta.K_gain;
+                meta.Lambda(k) = tracker_meta.Lambda_k;
+                meta.Q_diag(:, k) = tracker_meta.Q_diag;
+            else
+                H_mat = [1 0];
+                innov_buffer(innov_idx) = z_k;
+                innov_idx = mod(innov_idx, W_size) + 1;
+                
+                if k > W_size
+                    C_k = var(innov_buffer) + 1e-6;
+                    R_est = C_k - H_mat * (F_mat * P_k * F_mat' + Q_k) * H_mat';
+                    R_iae = max(0.01, 0.8 * R_iae + 0.2 * R_est);
+                    
+                    Q_pre = F_mat * P_k * F_mat' + Q_k;
+                    K_gain_est = Q_pre * H_mat' / (H_mat * Q_pre * H_mat' + R_iae);
+                    Q_est = K_gain_est * C_k * K_gain_est';
+                    Q_k(1,1) = max(1e-4, 0.9 * Q_k(1,1) + 0.1 * Q_est(1,1));
+                    Q_k(2,2) = max(1e-4, 0.9 * Q_k(2,2) + 0.1 * Q_est(2,2));
+                end
+                
+                R_eff = R_iae;
+                if var_def.uses_reliability
+                    penalty = 1 + cfg.var_D_A * exp(-cfg.var_D_b * m_k);
+                    R_eff = max(R_iae, R_iae * penalty);
+                end
+                
+                P_pre = F_mat * P_k * F_mat' + Q_k;
+                K_gain = P_pre * H_mat' / (H_mat * P_pre * H_mat' + R_eff);
+                
+                x_k = x_pre + K_gain * (z_k - H_mat * x_pre);
+                P_k = (eye(2) - K_gain * H_mat) * P_pre;
+                
+                meta.R_vb(k) = R_iae;
+                meta.R_eff(k) = R_eff;
+                meta.K_gain(:, k) = K_gain;
+                meta.Lambda(k) = R_eff / max(R_iae, eps);
+                meta.Q_diag(:, k) = diag(Q_k);
+            end
+            
+            meta.delay_est_samples(k) = x_k(1);
+            meta.delay_drift_est(k) = x_k(2);
+            meta.num_processed_symbols = k;
+            
+            u_prev = u_k;
+            rho_prev = rho_k;
+            current_ptr = current_ptr + L_sym;
+        end
+        
+        if meta.num_processed_symbols < num_syms
+            error('Paper2:SyncFail', 'Packet tracking lost/out of bounds prematurely.');
+        end
+        
+        % 6. Differential Decoding
+        raw_diff = meta.u_prompt(2:end) .* conj(meta.u_prompt(1:end-1));
         decoded_bits = real(raw_diff) > 0;
-    else
-        decoded_bits = [];
+        
+    catch ME
+        if strcmp(ME.identifier, 'Paper2:SyncFail')
+            meta.status = 'SYNC_FAIL';
+            meta.failure_reason = ME.message;
+            decoded_bits = [];
+        else
+            rethrow(ME); % Crash on unexpected errors
+        end
     end
     
     runtime = toc;

@@ -1,84 +1,87 @@
 function cfg = paper2_config(mode)
     % PAPER2_CONFIG Configuration for WUWNET Paper 2
     % Inputs:
-    %   mode - 'quick' or 'paper'
+    %   mode - 'quick', 'pilot', or 'paper'
     
     if nargin < 1
         mode = 'quick';
     end
     
     %% Base Paths
-    % Use absolute or relative paths from project root
-    cfg.mseq_path = 'data/mseq.mat';
-    cfg.results_dir = 'results_plots/WUWNET_Paper/';
+    this_file = mfilename('fullpath');
+    config_dir = fileparts(this_file);
+    project_root = fileparts(config_dir);
     
-    %% Load M-Sequence to get dynamic length
-    if exist(cfg.mseq_path, 'file')
-        mseq_data = load(cfg.mseq_path);
-        if isfield(mseq_data, 'mseq')
-            m_temp = mseq_data.mseq;
-            if iscell(m_temp), mseq_len = length(m_temp{1}); else, mseq_len = length(m_temp); end
-        else
-            % Fallback if field name differs
-            fields = fieldnames(mseq_data);
-            m_temp = mseq_data.(fields{1});
-            if iscell(m_temp), mseq_len = length(m_temp{1}); else, mseq_len = length(m_temp); end
-        end
-    else
-        warning('mseq.mat not found at %s. Falling back to length 31.', cfg.mseq_path);
-        mseq_len = 31;
-    end
+    cfg.project_root = project_root;
+    cfg.mseq_path = fullfile(project_root, 'data', 'mseq.mat');
+    cfg.bellhop_dir = fullfile(project_root, 'Bellhop2YS');
+    cfg.results_dir = fullfile(project_root, 'results_plots', 'WUWNET_Paper', mode);
+    cfg.generated_dir = fullfile(project_root, 'generated');
     
-    %% Signal Model & Modulation (DBPSK / DSSS)
-    cfg.fs = 48000;             % Sampling frequency (Hz)
-    cfg.fc = 5000;              % Carrier frequency (Hz)
-    cfg.preamble_band = [3000, 7000]; % HFM preamble bandwidth
+    %% System Parameters (Fixed for Paper 2)
+    cfg.fs = 48000;
+    cfg.fc = 5000;
+    cfg.preamble_band = [3000, 7000]; % 4 kHz bandwidth
     
-    cfg.mseq_len = mseq_len;    % M-sequence chips
-    cfg.N_pn = 6;               % Cycles of m-sequence per symbol
-    cfg.num_symbols = 120;      % Short frame differential symbols
+    % Spread Spectrum Definition
+    cfg.code_index = 2; % mseq{2,1}
+    cfg.samples_per_chip = 6;
+    cfg.code_length = 31;
+    cfg.symbol_samples = cfg.code_length * cfg.samples_per_chip;
     
-    % Derived
-    cfg.samples_per_chip = round(cfg.fs / cfg.fc); 
-    cfg.symbol_dur = cfg.N_pn * cfg.mseq_len * cfg.samples_per_chip / cfg.fs; % seconds
+    % Frame Definition
+    cfg.num_data_bits = 120;
+    cfg.num_diff_symbols = cfg.num_data_bits + 1; % 1 reference symbol
+    cfg.preamble_duration = 0.05; % 50ms
+    cfg.preamble_samples = round(cfg.preamble_duration * cfg.fs);
+    cfg.guard_duration = 0.05; % 50ms
+    cfg.guard_samples = round(cfg.guard_duration * cfg.fs);
     
-    %% Simulation & Monte Carlo
+    %% Channels (Bellhop)
+    cfg.channels = {
+        fullfile(cfg.bellhop_dir, 'channel_15m_20km_34m.mat'), 'Profile P1: Tx15m / 20km / Rx34m';
+        fullfile(cfg.bellhop_dir, 'channel_15m_20km_3467m.mat'), 'Profile P2: Tx15m / 20km / Rx3467m';
+        fullfile(cfg.bellhop_dir, 'channel_100m_45km_110m.mat'), 'Profile P3: Tx100m / 45km / Rx110m'
+    }; 
+
+    %% Algorithm Hyperparameters
+    % TRM / OS-CFAR
+    cfg.os_cfar.train_cells = 30;
+    cfg.os_cfar.guard_cells = 4;
+    cfg.os_cfar.pfa = 1e-4;
+    cfg.os_cfar.order_idx = 0.75; % e.g., 75th percentile
+    cfg.cfar_max_lag = round(cfg.symbol_samples * 1.5); % Look for paths within 1.5 symbol delays
+    
+    % HVB Tracker
+    cfg.N_vb = 4; % VB coordinate ascent iterations
+    cfg.c2 = 1/50; % Heteroscedastic penalty scaling factor
+    cfg.q_freeze_reliability = 0.2; % Freeze Q if m_k < 0.2
+    
+    % Variant D heuristic penalty parameters
+    cfg.var_D_A = 50;
+    cfg.var_D_b = 8;
+    
+    % Early-Late Tracking window size
+    cfg.W_size = 5; 
+    
+    %% Simulation & Monte Carlo Modes
+    cfg.master_seed = 20260823;
     cfg.snr_range = -14:1:0;
     
     switch mode
         case 'quick'
-            cfg.mc_trials = 20;
+            cfg.mc_trials_ber = 20;
+            cfg.mc_trials_stress = 20;
+            cfg.mc_trials_sens = 20;
+        case 'pilot'
+            cfg.mc_trials_ber = 200;
+            cfg.mc_trials_stress = 200;
+            cfg.mc_trials_sens = 100;
         case 'paper'
-            cfg.mc_trials = 3000;
+            cfg.mc_trials_ber = 3000;
+            cfg.mc_trials_stress = 3000;
+            cfg.mc_trials_sens = 300;
         otherwise
-            cfg.mc_trials = 20;
+            error('Unknown mode: %s. Use quick, pilot, or paper.', mode);
     end
-    
-    cfg.random_seed_policy = 'shuffle'; % Or fixed seed if required
-    
-    %% Tracking (HVB-AKF & DLL)
-    cfg.early_late_spacing = 0.5; % Chips
-    cfg.iae_window = 50;
-    
-    % HVB parameters
-    cfg.vb_forgetting_factor = 0.99;
-    cfg.N_vb = 3;               % Inner VB iterations
-    cfg.c2 = 1/50;              % Heteroscedastic penalty hyperparameter
-    cfg.Lambda_freeze = 100;    % Threshold to freeze Q updates
-    
-    %% Hybrid Threshold TRM & OS-CFAR
-    cfg.os_cfar.pfa = 1e-4;
-    cfg.os_cfar.train_cells = 40; % Total training cells (both sides)
-    cfg.os_cfar.guard_cells = 10; % Total guard cells
-    cfg.os_cfar.order_idx = 0.75; % e.g. 75th percentile of training cells
-    
-    cfg.kappa_side = 1.5;       % ACF sidelobe safety factor
-    
-    %% Channels (Bellhop)
-    cfg.channels = {
-        '../Bellhop2YS/channel_15m_20km_34m.mat', 'Shallow 20km (34m)';
-        '../Bellhop2YS/channel_15m_20km_3467m.mat', 'Shallow 20km (3467m)';
-        '../Bellhop2YS/channel_100m_45km_110m.mat', 'Deep 45km'
-    }; 
-
 end
