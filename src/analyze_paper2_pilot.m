@@ -345,28 +345,11 @@ function analyze_paper2_pilot()
     for ch = 1:num_ch
         ch_key = sprintf('CH%d', ch);
         res = D_stress.results.(ch_key).E_FQ;
-        valid = res.valid;
         
-        m_m_f = NaN; if isfield(res, 'm_fade'), m_m_f = median(res.m_fade(valid), 'omitnan'); end
-        m_m_p = NaN; if isfield(res, 'm_pre'), m_m_p = median(res.m_pre(valid), 'omitnan'); end
-        m_rr_f = NaN; if isfield(res, 'mean_Reff_Rvb_fade'), m_rr_f = median(res.mean_Reff_Rvb_fade(valid), 'omitnan'); end
-        m_rr_p = NaN; if isfield(res, 'mean_Reff_Rvb_pre'), m_rr_p = median(res.mean_Reff_Rvb_pre(valid), 'omitnan'); end
-        m_k_f = NaN; if isfield(res, 'mean_K_fade'), m_k_f = median(res.mean_K_fade(valid), 'omitnan'); end
-        m_k_p = NaN; if isfield(res, 'mean_K_pre'), m_k_p = median(res.mean_K_pre(valid), 'omitnan'); end
-        m_q11 = NaN; if isfield(res, 'Q11_fade'), m_q11 = median(res.Q11_fade(valid), 'omitnan'); end
-        m_q22 = NaN; if isfield(res, 'Q22_fade'), m_q22 = median(res.Q22_fade(valid), 'omitnan'); end
-        
-        required = [m_m_p, m_m_f, m_rr_p, m_rr_f, m_k_p, m_k_f, m_q11, m_q22];
-        
-        if any(~isfinite(required))
+        [pass_gate, status_gate, ~] = evaluate_mechanism_gate(res);
+        if ~pass_gate
             P4_pass = false;
-            P4_status = 'PILOT4_MISSING_TELEMETRY';
-        else
-            if ~(m_m_f < m_m_p), P4_pass = false; P4_status = 'PILOT4_FAIL_M_RELIABILITY'; end
-            if ~(m_rr_f > m_rr_p), P4_pass = false; P4_status = 'PILOT4_FAIL_REFF_RVB'; end
-            if ~(m_k_f < m_k_p), P4_pass = false; P4_status = 'PILOT4_FAIL_K_GAIN'; end
-            if abs(m_q11 - 0.05) > 1e-6, P4_pass = false; P4_status = 'PILOT4_FAIL_Q11_NOT_FROZEN'; end
-            if abs(m_q22 - 0.002) > 1e-6, P4_pass = false; P4_status = 'PILOT4_FAIL_Q22_NOT_FROZEN'; end
+            P4_status = status_gate;
         end
     end
     

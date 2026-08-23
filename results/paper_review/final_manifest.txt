@@ -1,0 +1,29 @@
+paper_basis_sha = 01521c6d3bc2f3d9455b87e01898869fb635b37a
+execution_worktree_sha = 01521c6d3bc2f3d9455b87e01898869fb635b37a
+
+final tracker = E-FQ
+Q = [0.05,0.002]
+Kcal = 8
+c2 = 0.0200
+
+TRM = disabled
+equalizer = disabled
+
+channel model = bellhop_local_cluster
+cluster gap = 0.05 s
+
+profiles = P1,P2,P3
+BER SNR = -16:-10 dB
+BER MC = 3000
+
+stress SNR = 15 dB
+stress MC = 3000
+warp v0 = 0.5 m/s
+warp amp = 1.5 m/s
+warp freq = 0.2 Hz
+fade = 100-ms Gaussian deep fade
+
+variants = IAE,VB-FQ,E-FQ
+
+bootstrap resamples = 10000
+bootstrap seed = 20260909

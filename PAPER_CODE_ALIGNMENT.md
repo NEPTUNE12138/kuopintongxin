@@ -14,7 +14,7 @@
 | Structural Q (diag truncation) | `hvb_akf_delay_tracker.m` | `test_hvb_tracker.m` | N/A | VERIFIED |
 | Final publication variants IAE / VB-FQ / E-FQ | N/A | N/A | N/A | FROZEN FOR PILOT |
 | Bellhop profiles (3 configs) | `paper2_config.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
-| MC Count = 3000 | `paper2_config.m` (`paper` mode) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | PARTIAL |
+| MC Count = 3000 | `paper2_config.m` (`paper` mode) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | VERIFIED |
 | BER calculated over total bits | `main_WUWNET_Paper_Validation.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
 | Runtime benchmark | `benchmark_paper2_receivers.m` | `benchmark_paper2_receivers.m` | CLI output | VERIFIED |
 
@@ -41,10 +41,11 @@
 - Dynamic stress SNR: 15 dB FROZEN
 - Final publication variants: IAE / VB-FQ / E-FQ
 - Pilot: READY ONLY IF corrected FINAL-1..10 pass
-- Paper: NOT RUN
+- Paper: READY
 
 *Status: 200-MC Pilot: ALL PREDECLARED GATES PASS*
-*Status: 3000-MC Paper: READY, NOT RUN*
+*Status: 3000-MC Paper: COMPLETE*
+*Status: Final large-MC gates: PASS*
 
 *Note: The SyncFailRate metric reflects post-acquisition receiver processing failure rate (ReceiverFailRate), as the coarse synchronizer does not use a calibrated detector threshold.*
 

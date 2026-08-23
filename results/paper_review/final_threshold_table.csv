@@ -1,0 +1,10 @@
+Profile,Variant,SNR50,SNR05,Delta_SNR50,Delta_SNR05
+Profile P1: Tx15m / 20km / Rx34m,IAE,-15,-12,0,0
+Profile P1: Tx15m / 20km / Rx34m,VB-FQ,-15,-12,0,0
+Profile P1: Tx15m / 20km / Rx34m,E-FQ,-15,-12,0,0
+Profile P2: Tx15m / 20km / Rx3467m,IAE,-12,-10,0,0
+Profile P2: Tx15m / 20km / Rx3467m,VB-FQ,-12,-10,0,0
+Profile P2: Tx15m / 20km / Rx3467m,E-FQ,-12,-10,0,0
+Profile P3: Tx100m / 45km / Rx110m,IAE,-15,-12,0,0
+Profile P3: Tx100m / 45km / Rx110m,VB-FQ,-15,-13,0,-1
+Profile P3: Tx100m / 45km / Rx110m,E-FQ,-15,-12,0,0
