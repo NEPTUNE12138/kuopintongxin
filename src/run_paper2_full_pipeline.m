@@ -38,32 +38,23 @@ function run_paper2_full_pipeline(mode)
         test_cfar_raw_detection_no_fallback;
         test_hvb_q_modes;
         test_hvb_innovation_telemetry;
+        test_mf_diagnostic_window_bounds;
+        test_fixedq_candidate_definition;
+        test_vbfq_ablation_definition;
+        test_frontend_trm_override;
+        test_receiver_telemetry_histories;
+        test_phase_mask_reset;
         fprintf('\nALL GATE TESTS PASSED!\n');
     catch ME
         fprintf('\n[!] GATE TEST FAILED: %s\n', ME.message);
         rethrow(ME);
     end
     
-    % 2. Final-Method Diagnostic (Q Attribution)
-    fprintf('\n--- Final-Method Diagnostic (Round 5) ---\n');
-    fprintf('Running HVB Q-Attribution Diagnostic...\n');
-    diagnose_hvb_q_attribution(mode);
+    % 2. Fixed-Q Held-Out Confirmatory Experiment (Round 6)
+    fprintf('\n--- Fixed-Q Held-Out Confirmation (Round 6) ---\n');
+    confirm_fixedq_tracker_heldout(mode);
     
-    % 3. CFAR Final Falsification
-    fprintf('\n--- CFAR Final Falsification ---\n');
-    fprintf('Running CFAR Detection Calibration...\n');
-    cfar_decision = diagnose_cfar_detection('freeze');
-    if ~cfar_decision.passed
-        fprintf('[!] CFAR_EXTRACTION_FAILURE\n');
-        fprintf('[!] HYBRID_TRM_NOT_SUPPORTED_AS_PRIMARY_CONTRIBUTION\n');
-        fprintf('[!] Setting TRM_PRIMARY_CONTRIBUTION = false\n');
-    end
-    
-    % 4. Execution Pipeline Control
-    % Because E-CAL failed the predefined Round 4/5 gates, we MUST halt here.
-    fprintf('\n[STOP] Pipeline halted due to E-CAL historical failure.\n');
-    fprintf('FINAL_TRACKER_UNRESOLVED\n');
-    fprintf('PILOT_BLOCKED\n');
-    
-    return;
+    % Pipeline terminates here — Pilot/Paper blocked while final tracker unresolved
+    fprintf('\nPILOT NOT RUN\n');
+    fprintf('PAPER NOT RUN\n');
 end

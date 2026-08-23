@@ -30,12 +30,13 @@
 ## Status of Execution
 - Round-4 Algorithm Freeze: HALTED
 - Full Quick Pipeline: FAILED / NOT COMPLETE
-- E-CAL: REJECTED AS FINAL BY 50-MC PREDECLARED GATE
+- Hybrid TRM primary contribution: REJECTED BY CORRECTED 30-MC CFAR FALSIFICATION
+- E-CAL adaptive-Q: REJECTED AS FINAL
+- Fixed-Q calibrated HVB: CANDIDATE ONLY
 - Final tracker: UNRESOLVED
 - c2 final: NOT FROZEN
-- TRM primary contribution: pending one corrected CFAR rerun
 - Bellhop local-cluster model: VERIFIED
-- Pilot: BLOCKED / NOT RUN
+- Pilot: BLOCKED
 - Paper: NOT RUN
 
 ## Unimplemented / Rejected Claims

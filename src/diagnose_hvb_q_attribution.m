@@ -100,6 +100,7 @@ function diagnose_hvb_q_attribution(mode)
                 sym_centers = pay_start + (0:cfg.num_diff_symbols-1) * cfg.symbol_samples + round(cfg.symbol_samples/2);
                 sym_centers = min(length(rx_warp), max(1, sym_centers));
                 
+                phases = struct(); % Reset to prevent stale fields from previous scenarios
                 if do_fade
                     fade_env_at_centers = fade_env(sym_centers);
                     fade_mask = fade_env_at_centers < 0.5;

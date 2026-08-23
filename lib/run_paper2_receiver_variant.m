@@ -16,6 +16,24 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
             cfg.hvb.use_q_freeze = false;
         end
         
+        if strcmp(variant_char, 'E-FQ')
+            cfg.hvb.q_adaptation_mode = 'fixed';
+            cfg.reliability.mode = 'relative_calibrated';
+            cfg.hvb.use_heteroscedastic = true;
+            % We leave Q initialized at [0.05 0; 0 0.002] and c2 unchanged (done in confirm script)
+        end
+        
+        if strcmp(variant_char, 'VB-FQ')
+            cfg.hvb.q_adaptation_mode = 'fixed';
+            cfg.hvb.use_heteroscedastic = false;
+            cfg.reliability.mode = 'none'; % Enforce disabled
+        end
+        
+        % Check for global frontend TRM override
+        if isfield(cfg, 'frontend') && isfield(cfg.frontend, 'use_trm') && ~cfg.frontend.use_trm
+            var_def.uses_trm = false;
+        end
+        
         % 2. CIR Extraction (using same coarse sync peak)
         peak_idx = sync_meta.peak_idx;
         [g_win, win_start, win_end] = extract_mf_local_window(sync_meta.mf, peak_idx, 50, 200);
@@ -97,12 +115,15 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
         meta.directional_consistency = zeros(1, num_syms);
         meta.coherent_fraction = zeros(1, num_syms);
         
+        meta.S = zeros(1, num_syms);
+        meta.P_pred_diag = zeros(2, num_syms);
+        
         W_innov = 5;
         innov_hist = zeros(1, W_innov);
         innov_hist_idx = 1;
         innov_count = 0;
         
-        is_cal = strcmp(variant_char, 'E-CAL') || ...
+        is_cal = strcmp(variant_char, 'E-CAL') || strcmp(variant_char, 'E-FQ') || ...
                  (strcmp(variant_char, 'E') && isfield(cfg, 'final_tracker_variant') && strcmp(cfg.final_tracker_variant, 'E-CAL'));
         if is_cal
             if isfield(cfg, 'reliability') && isfield(cfg.reliability, 'calibration_symbols')
@@ -200,6 +221,8 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                 meta.innovation(k) = tracker_meta.innovation;
                 meta.abs_innovation(k) = abs(tracker_meta.innovation);
                 meta.NIS(k) = tracker_meta.NIS;
+                meta.S(k) = tracker_meta.S;
+                meta.P_pred_diag(:, k) = tracker_meta.P_pred_diag;
                 
                 innov_hist(innov_hist_idx) = tracker_meta.innovation;
                 innov_hist_idx = mod(innov_hist_idx, W_innov) + 1;
@@ -257,6 +280,8 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                 meta.abs_innovation(k) = abs(innov_k);
                 S_k = H_mat * P_pre * H_mat' + R_eff;
                 meta.NIS(k) = innov_k^2 / max(S_k, eps);
+                meta.S(k) = S_k;
+                meta.P_pred_diag(:, k) = diag(P_pre);
                 
                 innov_hist(innov_hist_idx) = innov_k;
                 innov_hist_idx = mod(innov_hist_idx, W_innov) + 1;

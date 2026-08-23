@@ -103,6 +103,7 @@ function decision = diagnose_hvb_failure(mode)
                 sym_centers = min(length(rx_warp), max(1, sym_centers));
                 
                 % Determine Phase Masks
+                phases = struct(); % Reset to prevent stale fields from previous scenarios
                 if do_fade
                     fade_env_at_centers = fade_env(sym_centers);
                     fade_mask = fade_env_at_centers < 0.5;

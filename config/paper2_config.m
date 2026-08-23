@@ -77,6 +77,7 @@ function cfg = paper2_config(mode)
     % Frozen state initialization
     cfg.final_tracker_variant = 'UNRESOLVED';
     cfg.c2_frozen = false;
+    cfg.trm_primary_contribution = false;
     
     %% Simulation & Monte Carlo Modes
     cfg.master_seed = 20260823;

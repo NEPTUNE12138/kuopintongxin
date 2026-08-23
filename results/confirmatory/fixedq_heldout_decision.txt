@@ -1,0 +1,10 @@
+Gate 7.1 (Validity >= 0.95): PASS
+Gate 7.2 (Dynamic Safety <= 1.10): PASS
+Gate 7.3a (median E-FQ/IAE <= 0.95): PASS (0.7914)
+Gate 7.3b (wins >= 12/16): PASS (14/16)
+Gate 7.4 (Reliability Mechanism): PASS
+Gate 7.5 (Bayesian Ablation E-FQ/VB-FQ < 1): PASS (0.9355)
+
+FIXEDQ_TRACKER_HELDOUT_PASS
+CANDIDATE_READY_FOR_FINAL_PARAMETER_FREEZE
+PILOT_STILL_NOT_RUN
