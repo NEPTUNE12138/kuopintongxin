@@ -290,7 +290,7 @@ function analyze_paper2_paper()
         fprintf(fid_cons, 'ProfileID,ProfileDescription,Variant_or_Comparison,Metric,PilotValue,PaperValue,Difference,RelativeDifference,DirectionConsistent\n');
         
         fid_dir = fopen(fullfile(out_dir, 'pilot_paper_direction_summary.csv'), 'w');
-        fprintf(fid_dir, 'ProfileID,Overall_IAE_Consistent,Fade_IAE_Consistent,Overall_VBFQ_Consistent,Fade_VBFQ_Consistent,Mechanism_Consistent\n');
+        fprintf(fid_dir, 'ProfileID,EFQ_IAE_Overall_PilotRatio,EFQ_IAE_Overall_PaperRatio,EFQ_IAE_Overall_Consistent,EFQ_IAE_Fade_PilotRatio,EFQ_IAE_Fade_PaperRatio,EFQ_IAE_Fade_Consistent,EFQ_VBFQ_Overall_PilotRatio,EFQ_VBFQ_Overall_PaperRatio,EFQ_VBFQ_Overall_Consistent,EFQ_VBFQ_Fade_PilotRatio,EFQ_VBFQ_Fade_PaperRatio,EFQ_VBFQ_Fade_Consistent,Mechanism_m_Consistent,Mechanism_ReffRvb_Consistent,Mechanism_K_Consistent,Q_Fixed_Consistent\n');
         
         pilot_stress_files = dir(fullfile('results', 'pilot', '*stress*.mat'));
         [~, max_idx] = max([pilot_stress_files.datenum]);
@@ -360,6 +360,9 @@ function analyze_paper2_paper()
             % Effects
             comps = {'A', 'VB_FQ'};
             c_names = {'IAE', 'VB-FQ'};
+            
+            % We will collect the 4 ratios for Pilot and Paper
+            eff_ratios = zeros(2, 4); % rows: Pilot=1/Paper=2, cols: IAE_O, IAE_F, VB_O, VB_F
             dir_consist = zeros(1, 4);
             idx_eff = 1;
             
@@ -374,10 +377,17 @@ function analyze_paper2_paper()
                 rat_pa_o = median(res_pa_e.rmse_overall(res_pa_e.valid)) / median(res_pa_c.rmse_overall(res_pa_c.valid));
                 rat_pa_f = median(res_pa_e.rmse_fade(res_pa_e.valid)) / median(res_pa_c.rmse_fade(res_pa_c.valid));
                 
+                eff_ratios(1, idx_eff) = rat_pi_o;
+                eff_ratios(2, idx_eff) = rat_pa_o;
                 dir_o = (rat_pi_o < 1) && (rat_pa_o < 1);
+                dir_consist(idx_eff) = dir_o; 
+                idx_eff = idx_eff + 1;
+                
+                eff_ratios(1, idx_eff) = rat_pi_f;
+                eff_ratios(2, idx_eff) = rat_pa_f;
                 dir_f = (rat_pi_f < 1) && (rat_pa_f < 1);
-                dir_consist(idx_eff) = dir_o; idx_eff = idx_eff + 1;
-                dir_consist(idx_eff) = dir_f; idx_eff = idx_eff + 1;
+                dir_consist(idx_eff) = dir_f; 
+                idx_eff = idx_eff + 1;
                 
                 str_dir_o = 'FALSE'; if dir_o, str_dir_o = 'TRUE'; end
                 str_dir_f = 'FALSE'; if dir_f, str_dir_f = 'TRUE'; end
@@ -416,16 +426,28 @@ function analyze_paper2_paper()
             q_fix_pi = (abs(m_vals_pi(7) - 0.05) < 1e-5) && (abs(m_vals_pi(8) - 0.002) < 1e-5);
             q_fix_pa = (abs(m_vals_pa(7) - 0.05) < 1e-5) && (abs(m_vals_pa(8) - 0.002) < 1e-5);
             
-            mech_dir = (m_f_lt_pre_pi && m_f_lt_pre_pa) && (r_f_gt_pre_pi && r_f_gt_pre_pa) && ...
-                       (k_f_lt_pre_pi && k_f_lt_pre_pa) && (q_fix_pi && q_fix_pa);
-                       
-            str_mech = 'FALSE'; if mech_dir, str_mech = 'TRUE'; end
+            mech_m_cons = (m_f_lt_pre_pi && m_f_lt_pre_pa);
+            mech_r_cons = (r_f_gt_pre_pi && r_f_gt_pre_pa);
+            mech_k_cons = (k_f_lt_pre_pi && k_f_lt_pre_pa);
+            mech_q_cons = (q_fix_pi && q_fix_pa);
+            
+            str_mech_m = 'FALSE'; if mech_m_cons, str_mech_m = 'TRUE'; end
+            str_mech_r = 'FALSE'; if mech_r_cons, str_mech_r = 'TRUE'; end
+            str_mech_k = 'FALSE'; if mech_k_cons, str_mech_k = 'TRUE'; end
+            str_mech_q = 'FALSE'; if mech_q_cons, str_mech_q = 'TRUE'; end
+            
             str_o_iae = 'FALSE'; if dir_consist(1), str_o_iae = 'TRUE'; end
             str_f_iae = 'FALSE'; if dir_consist(2), str_f_iae = 'TRUE'; end
             str_o_vb = 'FALSE'; if dir_consist(3), str_o_vb = 'TRUE'; end
             str_f_vb = 'FALSE'; if dir_consist(4), str_f_vb = 'TRUE'; end
             
-            fprintf(fid_dir, '%s,%s,%s,%s,%s,%s\n', p_id, str_o_iae, str_f_iae, str_o_vb, str_f_vb, str_mech);
+            fprintf(fid_dir, '%s,%.6f,%.6f,%s,%.6f,%.6f,%s,%.6f,%.6f,%s,%.6f,%.6f,%s,%s,%s,%s,%s\n', ...
+                p_id, ...
+                eff_ratios(1,1), eff_ratios(2,1), str_o_iae, ...
+                eff_ratios(1,2), eff_ratios(2,2), str_f_iae, ...
+                eff_ratios(1,3), eff_ratios(2,3), str_o_vb, ...
+                eff_ratios(1,4), eff_ratios(2,4), str_f_vb, ...
+                str_mech_m, str_mech_r, str_mech_k, str_mech_q);
         end
         fclose(fid_cons);
         fclose(fid_dir);

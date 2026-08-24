@@ -7,11 +7,11 @@ function p_id = canonical_profile_id(raw_str)
     
     raw_str = char(raw_str);
     
-    if contains(raw_str, 'P1')
+    if strcmp(raw_str, 'P1') || strcmp(raw_str, 'Profile P1: Tx15m / 20km / Rx34m')
         p_id = 'P1';
-    elseif contains(raw_str, 'P2')
+    elseif strcmp(raw_str, 'P2') || strcmp(raw_str, 'Profile P2: Tx15m / 20km / Rx3467m')
         p_id = 'P2';
-    elseif contains(raw_str, 'P3')
+    elseif strcmp(raw_str, 'P3') || strcmp(raw_str, 'Profile P3: Tx100m / 45km / Rx110m')
         p_id = 'P3';
     else
         error('canonical_profile_id:UnknownProfile', 'Unknown profile string: %s', raw_str);

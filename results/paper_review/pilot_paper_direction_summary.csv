@@ -1,4 +1,4 @@
-ProfileID,Overall_IAE_Consistent,Fade_IAE_Consistent,Overall_VBFQ_Consistent,Fade_VBFQ_Consistent,Mechanism_Consistent
-P1,TRUE,TRUE,TRUE,TRUE,TRUE
-P2,TRUE,TRUE,TRUE,TRUE,TRUE
-P3,TRUE,TRUE,TRUE,TRUE,TRUE
+ProfileID,EFQ_IAE_Overall_PilotRatio,EFQ_IAE_Overall_PaperRatio,EFQ_IAE_Overall_Consistent,EFQ_IAE_Fade_PilotRatio,EFQ_IAE_Fade_PaperRatio,EFQ_IAE_Fade_Consistent,EFQ_VBFQ_Overall_PilotRatio,EFQ_VBFQ_Overall_PaperRatio,EFQ_VBFQ_Overall_Consistent,EFQ_VBFQ_Fade_PilotRatio,EFQ_VBFQ_Fade_PaperRatio,EFQ_VBFQ_Fade_Consistent,Mechanism_m_Consistent,Mechanism_ReffRvb_Consistent,Mechanism_K_Consistent,Q_Fixed_Consistent
+P1,0.881809,0.885438,TRUE,0.833416,0.830902,TRUE,0.971392,0.975389,TRUE,0.913283,0.914249,TRUE,TRUE,TRUE,TRUE,TRUE
+P2,0.776973,0.778724,TRUE,0.710178,0.731356,TRUE,0.971000,0.968523,TRUE,0.889790,0.886972,TRUE,TRUE,TRUE,TRUE,TRUE
+P3,0.710380,0.703591,TRUE,0.648512,0.650274,TRUE,0.953986,0.957910,TRUE,0.861413,0.861300,TRUE,TRUE,TRUE,TRUE,TRUE
