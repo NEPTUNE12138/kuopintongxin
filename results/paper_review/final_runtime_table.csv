@@ -1,0 +1,4 @@
+Variant,Median_ms_per_packet,P10_ms_per_packet,P90_ms_per_packet,RelativeRuntime_vs_IAE
+IAE,4.65,2.63,6.76,1.000
+VB-FQ,7.24,4.98,10.48,1.555
+E-FQ,7.61,5.44,10.78,1.636

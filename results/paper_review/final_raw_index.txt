@@ -1,0 +1,17 @@
+paper_basis_sha = 01521c6d3bc2f3d9455b87e01898869fb635b37a
+result_commit_sha = cda0964df2caf95ad03f9875d1e4dd47285f584a
+
+final BER MAT path = results/paper/paper2_ber_validation_3000mc.mat
+final Stress MAT path = results/paper/paper2_stress_pilot_3000mc.mat
+
+BER dimensions = [3, 7, 3, 3000]
+Stress trial count = 3000
+
+checkpoint directory = results/paper/checkpoints/
+BER checkpoint count = 21
+Stress checkpoint count = 3
+
+final BER table path = results/paper_review/final_ber_table.csv
+final tracking table path = results/paper_review/final_tracking_table.csv
+final bootstrap table path = results/paper_review/final_bootstrap_table.csv
+final mechanism table path = results/paper_review/final_mechanism_table.csv

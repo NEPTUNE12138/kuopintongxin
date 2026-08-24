@@ -1,0 +1,4 @@
+Profile,ReliabilityDropPercent,ReffRvbIncreasePercent,KReductionPercent
+Profile P1: Tx15m / 20km / Rx34m,15.9819,42.0585,14.5965
+Profile P2: Tx15m / 20km / Rx3467m,13.9415,34.1036,16.5425
+Profile P3: Tx100m / 45km / Rx110m,14.6438,37.3588,15.1455

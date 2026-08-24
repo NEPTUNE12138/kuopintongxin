@@ -12,7 +12,7 @@
 | VB coordinate-ascent | `hvb_akf_delay_tracker.m` (inner loop) | `test_hvb_tracker.m` | N/A | VERIFIED |
 | Fixed c2 heteroscedastic penalty | `hvb_akf_delay_tracker.m` | `plot_sensitivity_c2.m` | `Fig_Sensitivity_c2.png` | VERIFIED |
 | Structural Q (diag truncation) | `hvb_akf_delay_tracker.m` | `test_hvb_tracker.m` | N/A | VERIFIED |
-| Final publication variants IAE / VB-FQ / E-FQ | N/A | N/A | N/A | FROZEN FOR PILOT |
+| Final publication variants IAE / VB-FQ / E-FQ | N/A | N/A | N/A | FROZEN FINAL |
 | Bellhop profiles (3 configs) | `paper2_config.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
 | MC Count = 3000 | `paper2_config.m` (`paper` mode) | `main_WUWNET_Paper_Validation.m` | `raw_results.mat` | VERIFIED |
 | BER calculated over total bits | `main_WUWNET_Paper_Validation.m` | `main_WUWNET_Paper_Validation.m` | `ber_results.csv` | VERIFIED |
@@ -46,6 +46,7 @@
 *Status: 200-MC Pilot: ALL PREDECLARED GATES PASS*
 *Status: 3000-MC Paper: COMPLETE*
 *Status: Final large-MC gates: PASS*
+*Status: Final post-processing audit: COMPLETE*
 
 *Note: The SyncFailRate metric reflects post-acquisition receiver processing failure rate (ReceiverFailRate), as the coarse synchronizer does not use a calibrated detector threshold.*
 
