@@ -2,7 +2,7 @@ paper_basis_sha = 01521c6d3bc2f3d9455b87e01898869fb635b37a
 execution_head_sha = 01521c6d3bc2f3d9455b87e01898869fb635b37a
 execution_worktree_clean = NOT RECORDED
 paper_result_commit_sha = cda0964df2caf95ad03f9875d1e4dd47285f584a
-postprocessing_basis_sha = cda0964df2caf95ad03f9875d1e4dd47285f584a
+postprocessing_basis_sha = e37b4a1196bc364d6520485693e196a0365035cd
 
 final tracker = E-FQ
 Q = [0.05,0.002]

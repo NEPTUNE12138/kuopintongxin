@@ -1,0 +1,4 @@
+ProfileID,Overall_IAE_Consistent,Fade_IAE_Consistent,Overall_VBFQ_Consistent,Fade_VBFQ_Consistent,Mechanism_Consistent
+P1,TRUE,TRUE,TRUE,TRUE,TRUE
+P2,TRUE,TRUE,TRUE,TRUE,TRUE
+P3,TRUE,TRUE,TRUE,TRUE,TRUE

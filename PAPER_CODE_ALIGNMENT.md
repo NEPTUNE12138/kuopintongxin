@@ -47,6 +47,8 @@
 *Status: 3000-MC Paper: COMPLETE*
 *Status: Final large-MC gates: PASS*
 *Status: Final post-processing audit: COMPLETE*
+*Status: Figure source-data audit: PASS*
+*Status: Pilot->Paper consistency audit: PASS*
 
 *Note: The SyncFailRate metric reflects post-acquisition receiver processing failure rate (ReceiverFailRate), as the coarse synchronizer does not use a calibrated detector threshold.*
 
