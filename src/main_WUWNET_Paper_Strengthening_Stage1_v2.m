@@ -165,30 +165,28 @@ function analyze_reliability_validity_v2(T, out_dir)
     
     abs_e = abs(T.e_meas_k);
     
-    %% 1. Equal-count quantile bins
-    num_bins = 5;
-    quantiles = quantile(T.m_k, linspace(0, 1, num_bins + 1));
-    quantiles(1) = -Inf; % Ensure all lower bounds are captured
-    quantiles(end) = Inf; % Ensure all upper bounds are captured
+    %% 1. Tie-aware fixed bins
+    num_bins = 4;
+    bin_labels = {'< 0.95', '[0.95, 0.98)', '[0.98, 1.00)', '= 1.00'}';
     
     bin_counts = zeros(num_bins, 1);
     bin_median = zeros(num_bins, 1);
     bin_var = zeros(num_bins, 1);
     bin_ci_low = zeros(num_bins, 1);
     bin_ci_high = zeros(num_bins, 1);
-    bin_labels = cell(num_bins, 1);
     
     for i = 1:num_bins
-        idx = T.m_k > quantiles(i) & T.m_k <= quantiles(i+1);
-        % Handle first bin edge case
         if i == 1
-            idx = T.m_k >= quantiles(1) & T.m_k <= quantiles(2);
+            idx = T.m_k < 0.95;
+        elseif i == 2
+            idx = T.m_k >= 0.95 & T.m_k < 0.98;
+        elseif i == 3
+            idx = T.m_k >= 0.98 & T.m_k < 1.00;
+        elseif i == 4
+            idx = T.m_k == 1.00;
         end
-        bin_counts(i) = sum(idx);
         
-        q_low = max(0, quantiles(i));
-        q_high = min(1, quantiles(i+1));
-        bin_labels{i} = sprintf('[%.2f, %.2f)', q_low, q_high);
+        bin_counts(i) = sum(idx);
         
         if bin_counts(i) > 0
             err_vals = abs_e(idx);

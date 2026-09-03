@@ -2,7 +2,7 @@
 
 This document summarizes the steps, execution details, and results of the scientific strengthening process requested for the WUWNet'26 manuscript.
 
-## Stage 1: Validate Reliability `m_k` against Actual DLL Measurement Error
+## Stage 1: Evaluate Reliability `m_k` against Actual DLL Measurement Error
 - **Files Changed:** Created `src/main_WUWNET_Paper_Strengthening_Stage1_v2.m`, `docs/RELIABILITY_MEASUREMENT_AUDIT.md`.
 - **Formulas Used:** $e_{meas,k} = (z_k - z_1) - (\epsilon_{true,k} - \epsilon_{true,1})$. $z_k$ captured *before* Kalman correction.
 - **Run Command:** `matlab -batch "main_WUWNET_Paper_Strengthening_Stage1_v2(200);"`
@@ -14,7 +14,7 @@ This document summarizes the steps, execution details, and results of the scient
   - `results/paper_strengthening_v2/reliability_measurement_profile_summary_v2.csv`
   - `results/paper_strengthening_v2/reliability_measurement_trial_summary_v2.csv`
   - `results/paper_strengthening_v2/Fig_Reliability_vs_DLL_Error_v2.png`
-- **Numerical Summary:** Median trial Spearman correlation: -0.2484 (95% CI: [-0.2539, -0.2400]). Strongest correlation during FADE (-0.26) and POST (-0.33) phases. Quantile bin median absolute errors map strictly inversely to the reliability bins.
+- **Numerical Summary:** Median trial Spearman correlation: -0.2484 (95% CI: [-0.2539, -0.2400]). Strongest correlation during FADE (-0.26) and POST (-0.33) phases. Shows a modest but consistent negative association between estimated reliability and absolute delay measurement error.
 - **Status:** PASS
 - **Limitations:** Limited to 200 MC pilot, though sufficient for bootstrap significance.
 
@@ -61,6 +61,8 @@ This document summarizes the steps, execution details, and results of the scient
 - **SNR:** +15 dB stress condition.
 - **Warp/Fade:** Continuous time warp (1.5 m/s amp) and 100-ms Gaussian fade (0.9 depth) enabled by default in the stress pipeline.
 - **Status:** PASS. The MAT artifact explicitly pre-calculates and stores `ber`, `raw_errors`, and `valid` for all variants in `results.(ch_key).(vc_key)`. Dynamic-stress communication metrics are available without rerunning simulations.
+- **Output Files:**
+  - `results/paper_strengthening_v2/DynamicStress_Communication_15dB.csv`
 
 ## Final Review
 - Code aligns strictly with WUWNet'26 specifications. No frozen parameters were mutated. V2 directories isolate the scientific strengthening data entirely from the legacy publication results.

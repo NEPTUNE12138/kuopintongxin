@@ -1,0 +1,10 @@
+Variant,Profile,BER_Valid,FER_Overall,ReceiverFailRate,FER_CI95_Lower,FER_CI95_Upper
+IAE,P1,0,0,0,0,0
+IAE,P2,0,0,0,0,0
+IAE,P3,0,0,0,0,0
+VB-FQ,P1,0,0,0,0,0
+VB-FQ,P2,0,0,0,0,0
+VB-FQ,P3,0,0,0,0,0
+E-FQ,P1,0,0,0,0,0
+E-FQ,P2,0,0,0,0,0
+E-FQ,P3,0,0,0,0,0
