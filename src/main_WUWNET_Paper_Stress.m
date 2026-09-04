@@ -1,5 +1,5 @@
 function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_override)
-% MAIN_WUWNET_PAPER_STRESS End-to-end Tracking Stress Test (Delay Variation & Fading)
+% MAIN_WUWNET_PAPER_STRESS Reliability-ablation stress test.
 % Usage: [csv_file, run_meta] = main_WUWNET_Paper_Stress('quick', 15, 20)
 
     if nargin < 1
@@ -18,8 +18,8 @@ function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_
         cfg.mc_trials_stress = mc_override;
     end
     
-    variants = {'A', 'VB-FQ', 'E-FQ'};
-    csv_labels = {'IAE', 'VB-FQ', 'E-FQ'};
+    variants = {'A', 'VB-FQ', 'R-FQ', 'E-FQ'};
+    csv_labels = {'IAE', 'VB-FQ', 'R-FQ', 'E-FQ'};
     num_variants = length(variants);
     
     num_mc = cfg.mc_trials_stress;
@@ -28,7 +28,8 @@ function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_
     fprintf('\n=== Starting Stress Test (%s) ===\n', upper(mode));
     fprintf('MC Trials: %d | Channels: %d | SNR: %d dB\n', num_mc, num_channels, snr_db);
     
-    out_dir = fullfile('results', mode);
+    % Strengthening artifacts are isolated from all frozen result folders.
+    out_dir = fullfile('results', 'paper_strengthening', 'RFQ_ablation');
     if ~exist(out_dir, 'dir')
         mkdir(out_dir);
     end
@@ -219,9 +220,15 @@ function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_
     % Metrics and CSV Export
     fprintf('\n--- Stress Test Summary ---\n');
     timestamp = datestr(now, 'yyyymmdd_HHMMSS');
-    csv_file = fullfile(out_dir, sprintf('paper2_stress_summary_%s.csv', timestamp));
+    csv_file = fullfile(out_dir, sprintf('RFQ_ablation_summary_%s.csv', timestamp));
     fid = fopen(csv_file, 'w');
-    fprintf(fid, 'Channel,Variant,Trials_Valid,SyncFailRate,FER_Overall,FER_Valid,BER_Valid,RMSE_Overall,RMSE_Pre,RMSE_Fade,RMSE_Post,Mean_K_Fade,Mean_Reff_Fade,Mean_Reff_Rvb_Fade,Median_Q11_Fade,Median_Q22_Fade,Median_Ppred11_Fade,Median_Ppred22_Fade\n');
+    fprintf(fid, 'Channel,Variant,Trials_Valid,SyncFailRate,FER_Overall,FER_Valid,BER_Valid,RMSE,RMSE_CI95_Lower,RMSE_CI95_Upper,fade_RMSE,fade_RMSE_CI95_Lower,fade_RMSE_CI95_Upper,RMSE_Pre,RMSE_Post,Mean_K_Fade,Mean_Reff_Fade,Mean_Reff_Rvb_Fade,Median_Q11_Fade,Median_Q22_Fade,Median_Ppred11_Fade,Median_Ppred22_Fade\n');
+
+    % A separate deterministic stream makes CI values reproducible without
+    % affecting any paired signal/channel/noise realization above.
+    ci_seed = cfg.master_seed + 424242;
+    rng(ci_seed, 'twister');
+    ci_resamples = 2000;
     
     for ch_idx = 1:num_channels
         ch_key = sprintf('CH%d', ch_idx);
@@ -244,16 +251,20 @@ function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_
             m_q22 = median(results.(ch_key).(vc_key).Q22_fade(valid_mask), 'omitnan');
             m_p11 = median(results.(ch_key).(vc_key).Ppred11_fade(valid_mask), 'omitnan');
             m_p22 = median(results.(ch_key).(vc_key).Ppred22_fade(valid_mask), 'omitnan');
+
+            rmse_ci = bootstrap_median_ci(results.(ch_key).(vc_key).rmse_overall(valid_mask), ci_resamples);
+            fade_rmse_ci = bootstrap_median_ci(results.(ch_key).(vc_key).rmse_fade(valid_mask), ci_resamples);
             
-            fprintf(fid, '%s,%s,%d,%.4f,%.4f,%.4f,%.6f,%.4f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
+            fprintf(fid, '%s,%s,%d,%.4f,%.4f,%.4f,%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n', ...
                 cfg.channels{ch_idx, 2}, label, stats.Trials_Valid, stats.SyncFailRate, ...
-                stats.FER_Overall, stats.FER_Valid, stats.BER_Valid, m_rmse, m_pre, m_fade, m_post, m_k, m_reff, m_rr, m_q11, m_q22, m_p11, m_p22);
+                stats.FER_Overall, stats.FER_Valid, stats.BER_Valid, m_rmse, rmse_ci(1), rmse_ci(2), ...
+                m_fade, fade_rmse_ci(1), fade_rmse_ci(2), m_pre, m_post, m_k, m_reff, m_rr, m_q11, m_q22, m_p11, m_p22);
         end
     end
     fclose(fid);
     
-    save_file = fullfile(out_dir, sprintf('paper2_stress_%s_%s.mat', mode, timestamp));
-    save(save_file, 'results', 'cfg', 'variants', 'csv_labels', 'mode');
+    save_file = fullfile(out_dir, sprintf('RFQ_ablation_raw_%s_%s.mat', mode, timestamp));
+    save(save_file, 'results', 'cfg', 'variants', 'csv_labels', 'mode', 'ci_seed', 'ci_resamples');
     fprintf('Stress results saved to:\n  %s\n  %s\n', save_file, csv_file);
     
     run_meta.variants_internal = variants;
@@ -266,4 +277,29 @@ function [csv_file, run_meta] = main_WUWNET_Paper_Stress(mode, snr_override, mc_
     run_meta.c2 = cfg.c2;
     run_meta.Q = cfg.final_Q;
     run_meta.has_all_profiles = (num_channels == 3);
+    run_meta.output_dir = out_dir;
+    run_meta.raw_file = save_file;
+    run_meta.summary_file = csv_file;
+    run_meta.ci_seed = ci_seed;
+    run_meta.ci_resamples = ci_resamples;
+end
+
+function ci = bootstrap_median_ci(values, n_resamples)
+% BOOTSTRAP_MEDIAN_CI Deterministic percentile 95% CI for the median.
+    values = values(isfinite(values));
+    n = numel(values);
+    if n == 0
+        ci = [NaN, NaN];
+        return;
+    elseif n == 1
+        ci = [values(1), values(1)];
+        return;
+    end
+
+    boot_medians = zeros(n_resamples, 1);
+    for b = 1:n_resamples
+        sample_idx = randi(n, n, 1);
+        boot_medians(b) = median(values(sample_idx));
+    end
+    ci = prctile(boot_medians, [2.5, 97.5]);
 end

@@ -8,6 +8,9 @@ function variant_info = paper2_variant_definition(var_char)
 
     variant_info = struct();
     variant_info.id = var_char;
+    variant_info.uses_kf_fq = false;
+    variant_info.uses_reliability_only = false;
+
     
     switch var_char
         case 'A'
@@ -64,7 +67,21 @@ function variant_info = paper2_variant_definition(var_char)
             variant_info.uses_hybrid = false;
             variant_info.uses_reliability = false;
             variant_info.uses_vb = true;
+        case 'KF-FQ'
+            variant_info.name = 'KF-FQ: Baseline Fixed Covariance KF';
+            variant_info.uses_trm = false;
+            variant_info.uses_hybrid = false;
+            variant_info.uses_reliability = false;
+            variant_info.uses_vb = false;
+            variant_info.uses_kf_fq = true;
+        case 'R-FQ'
+            variant_info.name = 'R-FQ: Reliability-Only Fixed-Q KF';
+            variant_info.uses_trm = false;
+            variant_info.uses_hybrid = false;
+            variant_info.uses_reliability = true;
+            variant_info.uses_vb = false;
+            variant_info.uses_reliability_only = true;
         otherwise
-            error('Unknown variant ID: %s. Valid options: A, B, C, D, E, E-VB-only, E-CAL, E-FQ, VB-FQ', var_char);
+            error('Unknown variant ID: %s. Valid options: A, B, C, D, E, E-VB-only, E-CAL, E-FQ, VB-FQ, KF-FQ, R-FQ', var_char);
     end
 end

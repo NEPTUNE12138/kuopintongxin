@@ -28,6 +28,10 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
             cfg.hvb.use_heteroscedastic = false;
             cfg.reliability.mode = 'none'; % Enforce disabled
         end
+
+        if strcmp(variant_char, 'R-FQ')
+            cfg.reliability.mode = 'relative_calibrated';
+        end
         
         % Check for global frontend TRM override
         if isfield(cfg, 'frontend') && isfield(cfg.frontend, 'use_trm') && ~cfg.frontend.use_trm
@@ -124,6 +128,7 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
         innov_count = 0;
         
         is_cal = strcmp(variant_char, 'E-CAL') || strcmp(variant_char, 'E-FQ') || ...
+                 strcmp(variant_char, 'R-FQ') || ...
                  (strcmp(variant_char, 'E') && isfield(cfg, 'final_tracker_variant') && strcmp(cfg.final_tracker_variant, 'E-CAL'));
         if is_cal
             if isfield(cfg, 'reliability') && isfield(cfg.reliability, 'calibration_symbols')
@@ -208,7 +213,39 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
             meta.m_reliability(k) = m_k;
             
             % Filter Update
-            if var_def.uses_vb
+            if var_def.uses_reliability_only
+                R0 = 0.05; % Same fixed measurement covariance as KF-FQ.
+                [x_k, tracker_meta] = reliability_only_delay_tracker(...
+                    z_abs, m_k, x_k, P_k, R0, cfg.c2);
+                P_k = tracker_meta.P_post;
+
+                meta.R_vb(k) = R0; % Baseline covariance for ratio telemetry.
+                meta.R_eff(k) = tracker_meta.R_eff;
+                meta.K_gain(:, k) = tracker_meta.K_gain;
+                meta.Lambda(k) = tracker_meta.Lambda_k;
+                meta.Q_diag(:, k) = tracker_meta.Q_diag;
+
+                meta.innovation(k) = tracker_meta.innovation;
+                meta.abs_innovation(k) = abs(tracker_meta.innovation);
+                meta.NIS(k) = tracker_meta.NIS;
+                meta.S(k) = tracker_meta.S;
+                meta.P_pred_diag(:, k) = tracker_meta.P_pred_diag;
+
+                innov_hist(innov_hist_idx) = tracker_meta.innovation;
+                innov_hist_idx = mod(innov_hist_idx, W_innov) + 1;
+                innov_count = min(innov_count + 1, W_innov);
+
+                if innov_count == W_innov
+                    d_k = abs(sum(innov_hist)) / (sum(abs(innov_hist)) + eps);
+                    mu_nu = mean(innov_hist);
+                    var_nu = var(innov_hist, 1);
+                    meta.directional_consistency(k) = d_k;
+                    meta.coherent_fraction(k) = mu_nu^2 / (mu_nu^2 + var_nu + eps);
+                else
+                    meta.directional_consistency(k) = NaN;
+                    meta.coherent_fraction(k) = NaN;
+                end
+            elseif var_def.uses_vb
                 [x_k, P_k, alpha_k, beta_k, Q_k, tracker_meta] = hvb_akf_delay_tracker(...
                     z_abs, u_k, u_prev, m_k, x_k, P_k, alpha_k, beta_k, Q_k, cfg);
                 
@@ -245,7 +282,7 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                 innov_buffer(innov_idx) = z_res;
                 innov_idx = mod(innov_idx, W_size) + 1;
                 
-                if k > W_size
+                if k > W_size && ~var_def.uses_kf_fq
                     C_k = var(innov_buffer) + 1e-6;
                     R_est = C_k - H_mat * (F_mat * P_k * F_mat' + Q_k) * H_mat';
                     R_iae = max(0.01, 0.8 * R_iae + 0.2 * R_est);
@@ -255,6 +292,8 @@ function [decoded_bits, runtime, meta] = run_paper2_receiver_variant(sig_pb, pre
                     Q_est = K_gain_est * C_k * K_gain_est';
                     Q_k(1,1) = max(1e-4, 0.9 * Q_k(1,1) + 0.1 * Q_est(1,1));
                     Q_k(2,2) = max(1e-4, 0.9 * Q_k(2,2) + 0.1 * Q_est(2,2));
+                elseif var_def.uses_kf_fq
+                    R_iae = 0.05;
                 end
                 
                 R_eff = R_iae;
